@@ -148,6 +148,26 @@ func (ui *TViewUI) setupChatView() {
 	ui.InputField.SetFieldTextColor(tcell.ColorWhite)
 	ui.InputField.SetLabelColor(tcell.ColorLightCyan)
 
+	// Autocomplete for slash commands
+	commands := []string{"/read", "/clear", "/config", "/save", "/help"}
+	ui.InputField.SetAutocompleteFunc(func(currentText string) (entries []string) {
+		if len(currentText) == 0 || !strings.HasPrefix(currentText, "/") {
+			return nil
+		}
+		for _, cmd := range commands {
+			if strings.HasPrefix(cmd, strings.ToLower(currentText)) {
+				entries = append(entries, cmd)
+			}
+		}
+		return
+	})
+	ui.InputField.SetAutocompletedFunc(func(text string, index, source int) bool {
+		if source != tview.AutocompletedNavigate {
+			ui.InputField.SetText(text)
+		}
+		return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
+	})
+
 	ui.InputField.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
 			text := ui.InputField.GetText()
