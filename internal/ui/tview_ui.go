@@ -18,13 +18,13 @@ import (
 )
 
 type TViewUI struct {
-	App          *tview.Application
-	Pages        *tview.Pages
-	ChatView     *tview.TextView
-	InputField   *tview.InputField
-	HistoryList  *tview.List
+	App            *tview.Application
+	Pages          *tview.Pages
+	ChatView       *tview.TextView
+	InputField     *tview.InputField
+	HistoryList    *tview.List
 	HistoryPreview *tview.TextView
-	SettingsForm *tview.Form
+	SettingsForm   *tview.Form
 	
 	// Sidebar components
 	Sidebar      *tview.List
@@ -37,6 +37,10 @@ type TViewUI struct {
 	convID       string
 	systemPrompt string
 	renderer     *glamour.TermRenderer
+
+	// Selection state
+	lastClickedIdx int
+	lastClickedTime time.Time
 }
 
 func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
@@ -46,6 +50,7 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 		config:  cfg,
 		storage: store,
 		apiClient: api.NewClient(cfg),
+		lastClickedIdx: -1,
 	}
 
 	// Theme / styling
@@ -339,41 +344,10 @@ func (ui *TViewUI) appendSystemMsg(msg string) {
 
 func (ui *TViewUI) setupHistoryView() {
 	ui.HistoryList = tview.NewList()
-	ui.HistoryList.SetBorder(true).SetTitle(" History (Enter to Load) ")
-	ui.HistoryList.ShowSecondaryText(false) // Hide ID in list for cleaner look
-
-	ui.HistoryList.SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
-		// This is called on Enter OR double click
-		ui.convID = secondaryText
-		conv, _ := ui.storage.GetConversation(ui.convID)
-		ui.systemPrompt = conv.SystemPrompt
-		ui.messages, _ = ui.storage.GetMessages(ui.convID)
-		ui.refreshChat()
-		ui.Pages.SwitchToPage("chat")
-	})
-	
-	ui.HistoryList.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
-		// Single click or Selection change to PREVIEW
-		ui.HistoryPreview.Clear()
-		if secondaryText == "" { return }
-		msgs, _ := ui.storage.GetMessages(secondaryText)
-		if len(msgs) == 0 {
-			fmt.Fprintf(ui.HistoryPreview, "[gray]No messages in this conversation.[-]")
-			return
-		}
-		// Show first few lines
-		for i, m := range msgs {
-			if i > 5 { break } // Limit preview
-			roleColor := "purple"
-			if m.Role == openai.ChatMessageRoleAssistant { roleColor = "green" }
-			fmt.Fprintf(ui.HistoryPreview, "[%s][b]%s[-][/b]\n", roleColor, strings.ToUpper(m.Role))
-			summary := m.Content
-			if len(summary) > 200 { summary = summary[:197] + "..." }
-			fmt.Fprintf(ui.HistoryPreview, "%s\n\n", summary)
-		}
-	})
-
 	ui.HistoryList.SetBorder(true).SetTitle(" History (Enter/Double-Click to Load) ")
+	ui.HistoryList.ShowSecondaryText(false)
+
+	// Custom Mouse Handling to distinguish Click from Double-Click
 	ui.HistoryList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEsc {
 			ui.Pages.SwitchToPage("chat")
@@ -383,7 +357,45 @@ func (ui *TViewUI) setupHistoryView() {
 			ui.confirmDeleteSelected()
 			return nil
 		}
+		if event.Key() == tcell.KeyEnter {
+			// Keyboard Enter always activates
+			idx := ui.HistoryList.GetCurrentItem()
+			_, secondary := ui.HistoryList.GetItemText(idx)
+			ui.loadConversation(secondary)
+			return nil
+		}
 		return event
+	})
+
+	ui.HistoryList.SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		// Selection-based activation (triggered by Enter or Mouse Click)
+		// We use a timer to detect Double-Click
+		now := time.Now()
+		if index == ui.lastClickedIdx && now.Sub(ui.lastClickedTime) < 500*time.Millisecond {
+			// Double click detected
+			ui.loadConversation(secondaryText)
+		}
+		ui.lastClickedIdx = index
+		ui.lastClickedTime = now
+	})
+	
+	ui.HistoryList.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		ui.HistoryPreview.Clear()
+		if secondaryText == "" { return }
+		msgs, _ := ui.storage.GetMessages(secondaryText)
+		if len(msgs) == 0 {
+			fmt.Fprintf(ui.HistoryPreview, "[gray]No messages in this conversation.[-]")
+			return
+		}
+		for i, m := range msgs {
+			if i > 5 { break }
+			roleColor := "purple"
+			if m.Role == openai.ChatMessageRoleAssistant { roleColor = "green" }
+			fmt.Fprintf(ui.HistoryPreview, "[%s][b]%s[-][/b]\n", roleColor, strings.ToUpper(m.Role))
+			summary := m.Content
+			if len(summary) > 200 { summary = summary[:197] + "..." }
+			fmt.Fprintf(ui.HistoryPreview, "%s\n\n", summary)
+		}
 	})
 
 	ui.HistoryPreview = tview.NewTextView().
@@ -400,9 +412,20 @@ func (ui *TViewUI) setupHistoryView() {
 	ui.Pages.AddPage("history", historyFlex, true, false)
 }
 
+func (ui *TViewUI) loadConversation(id string) {
+	if id == "" { return }
+	ui.convID = id
+	conv, _ := ui.storage.GetConversation(ui.convID)
+	ui.systemPrompt = conv.SystemPrompt
+	ui.messages, _ = ui.storage.GetMessages(ui.convID)
+	ui.refreshChat()
+	ui.Pages.SwitchToPage("chat")
+}
+
 func (ui *TViewUI) showHistory() {
 	ui.HistoryList.Clear()
 	ui.HistoryPreview.Clear()
+	ui.lastClickedIdx = -1 // Reset click state
 	convs, _ := ui.storage.ListConversations()
 	if len(convs) == 0 {
 		ui.HistoryList.AddItem("No history yet", "", 0, nil)
