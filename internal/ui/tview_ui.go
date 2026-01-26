@@ -23,6 +23,7 @@ type TViewUI struct {
 	ChatView     *tview.TextView
 	InputField   *tview.InputField
 	HistoryList  *tview.List
+	HistoryPreview *tview.TextView
 	SettingsForm *tview.Form
 	
 	// Sidebar components
@@ -207,9 +208,6 @@ func (ui *TViewUI) handleCommand(input string) {
 
 	case "/clear":
 		ui.messages = []openai.ChatCompletionMessage{}
-		// We don't clear convID here to allow continuing the same session if desired, 
-		// but usually /clear means a fresh start in TUI context.
-		// If user wants to keep the DB record but clear screen:
 		ui.ChatView.Clear()
 		ui.refreshChat()
 		ui.appendSystemMsg("Chat display cleared.")
@@ -251,8 +249,6 @@ func (ui *TViewUI) exportToFile(filename string) {
 
 func (ui *TViewUI) streamOpenAIResponse() {
 	ctx := context.Background()
-	
-	// Prepare messages with system prompt if new
 	var sendMsgs []openai.ChatCompletionMessage
 	if ui.systemPrompt != "" {
 		sendMsgs = append(sendMsgs, openai.ChatCompletionMessage{
@@ -324,6 +320,7 @@ func (ui *TViewUI) appendSystemMsg(msg string) {
 func (ui *TViewUI) setupHistoryView() {
 	ui.HistoryList = tview.NewList().
 		SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+			// Double click or Enter to LOAD
 			ui.convID = secondaryText
 			conv, _ := ui.storage.GetConversation(ui.convID)
 			ui.systemPrompt = conv.SystemPrompt
@@ -331,7 +328,29 @@ func (ui *TViewUI) setupHistoryView() {
 			ui.refreshChat()
 			ui.Pages.SwitchToPage("chat")
 		})
-	ui.HistoryList.SetBorder(true).SetTitle(" History ")
+	
+	ui.HistoryList.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		// Single click or Selection change to PREVIEW
+		ui.HistoryPreview.Clear()
+		if secondaryText == "" { return }
+		msgs, _ := ui.storage.GetMessages(secondaryText)
+		if len(msgs) == 0 {
+			fmt.Fprintf(ui.HistoryPreview, "[gray]No messages in this conversation.[-]")
+			return
+		}
+		// Show first few lines
+		for i, m := range msgs {
+			if i > 5 { break } // Limit preview
+			roleColor := "purple"
+			if m.Role == openai.ChatMessageRoleAssistant { roleColor = "green" }
+			fmt.Fprintf(ui.HistoryPreview, "[%s][b]%s[-][/b]\n", roleColor, strings.ToUpper(m.Role))
+			summary := m.Content
+			if len(summary) > 200 { summary = summary[:197] + "..." }
+			fmt.Fprintf(ui.HistoryPreview, "%s\n\n", summary)
+		}
+	})
+
+	ui.HistoryList.SetBorder(true).SetTitle(" History (Enter/Double-Click to Load) ")
 	ui.HistoryList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEsc {
 			ui.Pages.SwitchToPage("chat")
@@ -344,18 +363,30 @@ func (ui *TViewUI) setupHistoryView() {
 		return event
 	})
 
-	historyFlex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(ui.HistoryList, 0, 1, true).
-		AddItem(ui.buildHistoryBar(), 3, 1, false)
+	ui.HistoryPreview = tview.NewTextView().
+		SetDynamicColors(true).
+		SetWordWrap(true)
+	ui.HistoryPreview.SetBorder(true).SetTitle(" Preview ")
+
+	historyFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(ui.HistoryList, 35, 1, true).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(ui.HistoryPreview, 0, 1, false).
+			AddItem(ui.buildHistoryBar(), 3, 1, false), 0, 2, false)
 
 	ui.Pages.AddPage("history", historyFlex, true, false)
 }
 
 func (ui *TViewUI) showHistory() {
 	ui.HistoryList.Clear()
+	ui.HistoryPreview.Clear()
 	convs, _ := ui.storage.ListConversations()
-	for _, c := range convs {
-		ui.HistoryList.AddItem(c.Title, c.ID, 0, nil)
+	if len(convs) == 0 {
+		ui.HistoryList.AddItem("No history yet", "", 0, nil)
+	} else {
+		for _, c := range convs {
+			ui.HistoryList.AddItem(c.Title, c.ID, 0, nil)
+		}
 	}
 	ui.Pages.SwitchToPage("history")
 }
@@ -404,7 +435,6 @@ func (ui *TViewUI) showSettings() {
 func (ui *TViewUI) newConversation() {
 	ui.messages = []openai.ChatCompletionMessage{}
 	ui.convID = ""
-	// Keep current system prompt for new chat
 	ui.ChatView.Clear()
 	ui.Pages.SwitchToPage("chat")
 	ui.appendSystemMsg(fmt.Sprintf("New conversation started. (Prompt: %s)", ui.systemPrompt))
