@@ -414,7 +414,7 @@ func (m Model) handleInput(input string) (Model, tea.Cmd) {
 		if len(title) > 30 {
 			title = title[:27] + "..."
 		}
-		id, _ := m.storage.CreateConversation(title, m.config.Model)
+		id, _ := m.storage.CreateConversation(title, m.config.Model, "")
 		m.convID = id
 	}
 	m.storage.SaveMessage(m.convID, openai.ChatMessageRoleUser, input)

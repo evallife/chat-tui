@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
+	"github.com/evallife/chat-tui/internal/types"
 	_ "modernc.org/sqlite"
 )
 
@@ -28,6 +29,7 @@ func NewManager() (*Manager, error) {
 		id TEXT PRIMARY KEY,
 		title TEXT,
 		model TEXT,
+		system_prompt TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE TABLE IF NOT EXISTS messages (
@@ -37,18 +39,26 @@ func NewManager() (*Manager, error) {
 		content TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(conversation_id) REFERENCES conversations(id)
+	);
+	CREATE TABLE IF NOT EXISTS system_prompts (
+		id TEXT PRIMARY KEY,
+		name TEXT,
+		content TEXT
 	);`
 	_, err = db.Exec(query)
 	if err != nil {
 		return nil, err
 	}
 
+	// Migrate if needed
+	_, _ = db.Exec("ALTER TABLE conversations ADD COLUMN system_prompt TEXT")
+
 	return &Manager{db: db}, nil
 }
 
-func (m *Manager) CreateConversation(title, modelName string) (string, error) {
+func (m *Manager) CreateConversation(title, modelName, systemPrompt string) (string, error) {
 	id := uuid.New().String()
-	_, err := m.db.Exec("INSERT INTO conversations (id, title, model) VALUES (?, ?, ?)", id, title, modelName)
+	_, err := m.db.Exec("INSERT INTO conversations (id, title, model, system_prompt) VALUES (?, ?, ?, ?)", id, title, modelName, systemPrompt)
 	return id, err
 }
 
@@ -97,6 +107,43 @@ func (m *Manager) ListConversations() ([]ConvSummary, error) {
 	}
 	return convs, nil
 }
+
+func (m *Manager) GetConversation(id string) (types.Conversation, error) {
+	var c types.Conversation
+	err := m.db.QueryRow("SELECT id, title, model, system_prompt FROM conversations WHERE id = ?", id).
+		Scan(&c.ID, &c.Title, &c.Model, &c.SystemPrompt)
+	return c, err
+}
+
+func (m *Manager) ListSystemPrompts() ([]types.SystemPrompt, error) {
+	rows, err := m.db.Query("SELECT id, name, content FROM system_prompts")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var prompts []types.SystemPrompt
+	for rows.Next() {
+		var p types.SystemPrompt
+		if err := rows.Scan(&p.ID, &p.Name, &p.Content); err != nil {
+			return nil, err
+		}
+		prompts = append(prompts, p)
+	}
+	// Add default ones if empty
+	if len(prompts) == 0 {
+		defaults := []types.SystemPrompt{
+			{ID: "default", Name: "Default Chat", Content: ""},
+			{ID: "translator", Name: "Translator (ZH-EN)", Content: "You are a professional translator. Translate between Chinese and English."},
+			{ID: "coder", Name: "Code Expert", Content: "You are an expert software engineer. Provide concise and accurate code solutions."},
+		}
+		for _, p := range defaults {
+			_, _ = m.db.Exec("INSERT INTO system_prompts (id, name, content) VALUES (?, ?, ?)", p.ID, p.Name, p.Content)
+		}
+		return defaults, nil
+	}
+	return prompts, nil
+}
+
 
 func (m *Manager) DeleteConversation(convID string) error {
 	tx, err := m.db.Begin()

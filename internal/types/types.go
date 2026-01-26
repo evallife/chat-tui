@@ -12,8 +12,16 @@ type Config struct {
 }
 
 type Conversation struct {
-	ID        string                         `json:"id"`
-	Title     string                         `json:"title"`
-	Messages  []openai.ChatCompletionMessage `json:"messages"`
-	CreatedAt time.Time                      `json:"created_at"`
+	ID           string                         `json:"id"`
+	Title        string                         `json:"title"`
+	Model        string                         `json:"model"`
+	SystemPrompt string                         `json:"system_prompt"`
+	Messages     []openai.ChatCompletionMessage `json:"messages"`
+	CreatedAt    time.Time                      `json:"created_at"`
+}
+
+type SystemPrompt struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Content string `json:"content"`
 }

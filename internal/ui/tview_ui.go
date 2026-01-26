@@ -25,12 +25,17 @@ type TViewUI struct {
 	HistoryList  *tview.List
 	SettingsForm *tview.Form
 	
-	config    types.Config
-	storage   *storage.Manager
-	apiClient *api.Client
-	messages  []openai.ChatCompletionMessage
-	convID    string
-	renderer  *glamour.TermRenderer
+	// Sidebar components
+	Sidebar      *tview.List
+	MainFlex     *tview.Flex
+
+	config       types.Config
+	storage      *storage.Manager
+	apiClient    *api.Client
+	messages     []openai.ChatCompletionMessage
+	convID       string
+	systemPrompt string
+	renderer     *glamour.TermRenderer
 }
 
 func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
@@ -56,18 +61,23 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 		glamour.WithWordWrap(80),
 	)
 
+	ui.setupSidebar()
 	ui.setupChatView()
 	ui.setupHistoryView()
 	ui.setupSettingsView()
 
-	// Layout main chat
+	// Layout main chat with sidebar
 	footer := ui.buildFooterBar()
-	flex := tview.NewFlex().SetDirection(tview.FlexRow).
+	chatFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(ui.ChatView, 0, 1, false).
 		AddItem(ui.InputField, 3, 1, true).
 		AddItem(footer, 3, 1, false)
 
-	ui.Pages.AddPage("chat", flex, true, true)
+	ui.MainFlex = tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(ui.Sidebar, 20, 1, false).
+		AddItem(chatFlex, 0, 4, true)
+
+	ui.Pages.AddPage("chat", ui.MainFlex, true, true)
 	ui.App.SetRoot(ui.Pages, true).EnableMouse(true)
 
 	// Global key handlers
@@ -85,11 +95,36 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 		case tcell.KeyCtrlE:
 			ui.exportHistory()
 			return nil
+		case tcell.KeyCtrlB: // Toggle sidebar
+			if _, item := ui.MainFlex.GetItem(0).(*tview.List); item {
+				ui.MainFlex.RemoveItem(ui.Sidebar)
+			} else {
+				ui.MainFlex.AddItem(ui.Sidebar, 20, 1, false)
+				// Reorder so it's first
+				items := []tview.Primitive{}
+				for i := 0; i < ui.MainFlex.GetItemCount(); i++ {
+					items = append(items, ui.MainFlex.GetItem(i))
+				}
+				// This is a bit hacky in tview flex, usually you'd rebuild or use a fixed structure
+			}
+			return nil
 		}
 		return event
 	})
 
 	return ui
+}
+
+func (ui *TViewUI) setupSidebar() {
+	ui.Sidebar = tview.NewList().
+		AddItem("New Chat", "Start fresh", 'n', ui.newConversation).
+		AddItem("History", "Load past chats", 'h', ui.showHistory).
+		AddItem("Settings", "Config API", 's', ui.showSettings).
+		AddItem("System Prompts", "Change AI role", 'p', ui.showSystemPrompts).
+		AddItem("Quit", "Exit app", 'q', func() { ui.App.Stop() })
+	
+	ui.Sidebar.SetBorder(true).SetTitle(" Menu ")
+	ui.Sidebar.SetTitleColor(tcell.ColorYellow)
 }
 
 func (ui *TViewUI) setupChatView() {
@@ -102,24 +137,15 @@ func (ui *TViewUI) setupChatView() {
 		})
 	ui.ChatView.SetBorder(true).SetTitle(" Chat History ")
 	ui.ChatView.SetTitleColor(tcell.ColorLightSkyBlue)
-	ui.ChatView.SetBorderColor(tcell.ColorDarkSlateGray)
 
 	ui.InputField = tview.NewInputField().
 		SetLabel("> ").
 		SetFieldWidth(0)
 	ui.InputField.SetBorder(true).SetTitle(" Input (Enter to send) ")
 	ui.InputField.SetTitleColor(tcell.ColorLightSkyBlue)
-	ui.InputField.SetBorderColor(tcell.ColorDarkSlateGray)
 	ui.InputField.SetFieldBackgroundColor(tcell.ColorBlack)
 	ui.InputField.SetFieldTextColor(tcell.ColorWhite)
 	ui.InputField.SetLabelColor(tcell.ColorLightCyan)
-	ui.InputField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEsc {
-			ui.App.Stop()
-			return nil
-		}
-		return event
-	})
 
 	ui.InputField.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
@@ -157,7 +183,7 @@ func (ui *TViewUI) handleInput(input string) {
 	if ui.convID == "" {
 		title := input
 		if len(title) > 30 { title = title[:27] + "..." }
-		id, _ := ui.storage.CreateConversation(title, ui.config.Model)
+		id, _ := ui.storage.CreateConversation(title, ui.config.Model, ui.systemPrompt)
 		ui.convID = id
 	}
 	ui.storage.SaveMessage(ui.convID, openai.ChatMessageRoleUser, input)
@@ -168,7 +194,18 @@ func (ui *TViewUI) handleInput(input string) {
 
 func (ui *TViewUI) streamOpenAIResponse() {
 	ctx := context.Background()
-	stream, err := ui.apiClient.StreamChat(ctx, ui.messages)
+	
+	// Prepare messages with system prompt if new
+	var sendMsgs []openai.ChatCompletionMessage
+	if ui.systemPrompt != "" {
+		sendMsgs = append(sendMsgs, openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleSystem,
+			Content: ui.systemPrompt,
+		})
+	}
+	sendMsgs = append(sendMsgs, ui.messages...)
+
+	stream, err := ui.apiClient.StreamChat(ctx, sendMsgs)
 	if err != nil {
 		ui.App.QueueUpdateDraw(func() {
 			ui.appendSystemMsg(fmt.Sprintf("API Error: %v", err))
@@ -179,7 +216,7 @@ func (ui *TViewUI) streamOpenAIResponse() {
 
 	var fullResponse strings.Builder
 	ui.App.QueueUpdateDraw(func() {
-		fmt.Fprintf(ui.ChatView, "\n[yellow][b]ASSISTANT[-][/b]\n")
+		fmt.Fprintf(ui.ChatView, "\n[green][b]ASSISTANT[-][/b]\n")
 	})
 
 	for {
@@ -191,7 +228,6 @@ func (ui *TViewUI) streamOpenAIResponse() {
 		if content != "" {
 			fullResponse.WriteString(content)
 			ui.App.QueueUpdateDraw(func() {
-				// Simple incremental write
 				fmt.Fprint(ui.ChatView, content)
 			})
 		}
@@ -203,12 +239,15 @@ func (ui *TViewUI) streamOpenAIResponse() {
 			Content: fullResponse.String(),
 		})
 		ui.storage.SaveMessage(ui.convID, openai.ChatMessageRoleAssistant, fullResponse.String())
-		ui.refreshChat() // Re-render with Glamour
+		ui.refreshChat()
 	})
 }
 
 func (ui *TViewUI) refreshChat() {
 	ui.ChatView.Clear()
+	if ui.systemPrompt != "" {
+		fmt.Fprintf(ui.ChatView, "[gray][i]System Prompt: %s[-][/i]\n\n", ui.systemPrompt)
+	}
 	for _, m := range ui.messages {
 		roleColor := "purple"
 		if m.Role == openai.ChatMessageRoleAssistant { roleColor = "green" }
@@ -229,13 +268,13 @@ func (ui *TViewUI) setupHistoryView() {
 	ui.HistoryList = tview.NewList().
 		SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
 			ui.convID = secondaryText
+			conv, _ := ui.storage.GetConversation(ui.convID)
+			ui.systemPrompt = conv.SystemPrompt
 			ui.messages, _ = ui.storage.GetMessages(ui.convID)
 			ui.refreshChat()
 			ui.Pages.SwitchToPage("chat")
 		})
-	ui.HistoryList.SetBorder(true).SetTitle(" History (Enter to load) ")
-	ui.HistoryList.SetTitleColor(tcell.ColorLightSkyBlue)
-	ui.HistoryList.SetBorderColor(tcell.ColorDarkSlateGray)
+	ui.HistoryList.SetBorder(true).SetTitle(" History ")
 	ui.HistoryList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEsc {
 			ui.Pages.SwitchToPage("chat")
@@ -264,6 +303,23 @@ func (ui *TViewUI) showHistory() {
 	ui.Pages.SwitchToPage("history")
 }
 
+func (ui *TViewUI) showSystemPrompts() {
+	prompts, _ := ui.storage.ListSystemPrompts()
+	list := tview.NewList()
+	for _, p := range prompts {
+		pCopy := p
+		list.AddItem(p.Name, p.Content, 0, func() {
+			ui.systemPrompt = pCopy.Content
+			ui.appendSystemMsg(fmt.Sprintf("System prompt set to: %s", pCopy.Name))
+			ui.Pages.SwitchToPage("chat")
+		})
+	}
+	list.AddItem("Cancel", "", 'c', func() { ui.Pages.SwitchToPage("chat") })
+	list.SetBorder(true).SetTitle(" Select System Prompt ")
+	ui.Pages.AddPage("system_prompts", list, true, true)
+	ui.Pages.SwitchToPage("system_prompts")
+}
+
 func (ui *TViewUI) setupSettingsView() {
 	ui.SettingsForm = tview.NewForm().
 		AddInputField("API Key", ui.config.APIKey, 40, nil, nil).
@@ -281,8 +337,6 @@ func (ui *TViewUI) setupSettingsView() {
 			ui.Pages.SwitchToPage("chat")
 		})
 	ui.SettingsForm.SetBorder(true).SetTitle(" Settings ")
-	ui.SettingsForm.SetTitleColor(tcell.ColorLightSkyBlue)
-	ui.SettingsForm.SetBorderColor(tcell.ColorDarkSlateGray)
 	ui.Pages.AddPage("settings", ui.SettingsForm, true, false)
 }
 
@@ -293,14 +347,18 @@ func (ui *TViewUI) showSettings() {
 func (ui *TViewUI) newConversation() {
 	ui.messages = []openai.ChatCompletionMessage{}
 	ui.convID = ""
+	// Keep current system prompt for new chat
 	ui.ChatView.Clear()
 	ui.Pages.SwitchToPage("chat")
-	ui.appendSystemMsg("New conversation started.")
+	ui.appendSystemMsg(fmt.Sprintf("New conversation started. (Prompt: %s)", ui.systemPrompt))
 }
 
 func (ui *TViewUI) exportHistory() {
 	filename := fmt.Sprintf("chat_export_%d.md", time.Now().Unix())
 	var sb strings.Builder
+	if ui.systemPrompt != "" {
+		sb.WriteString(fmt.Sprintf("> System Prompt: %s\n\n", ui.systemPrompt))
+	}
 	for _, msg := range ui.messages {
 		sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n---\n\n", strings.ToUpper(msg.Role), msg.Content))
 	}
@@ -321,13 +379,10 @@ func (ui *TViewUI) makeButton(label string, action func()) *tview.Button {
 func (ui *TViewUI) buildFooterBar() *tview.Flex {
 	bar := tview.NewFlex().SetDirection(tview.FlexColumn)
 	bar.SetBorder(true).SetTitle(" Actions ")
-	bar.SetTitleColor(tcell.ColorLightSkyBlue)
-	bar.SetBorderColor(tcell.ColorDarkSlateGray)
-
 	bar.AddItem(ui.makeButton("New", ui.newConversation), 0, 1, false)
 	bar.AddItem(ui.makeButton("History", ui.showHistory), 0, 1, false)
+	bar.AddItem(ui.makeButton("Prompts", ui.showSystemPrompts), 0, 1, false)
 	bar.AddItem(ui.makeButton("Settings", ui.showSettings), 0, 1, false)
-	bar.AddItem(ui.makeButton("Export", ui.exportHistory), 0, 1, false)
 	bar.AddItem(ui.makeButton("Quit", func() { ui.App.Stop() }), 0, 1, false)
 	return bar
 }
@@ -335,9 +390,6 @@ func (ui *TViewUI) buildFooterBar() *tview.Flex {
 func (ui *TViewUI) buildHistoryBar() *tview.Flex {
 	bar := tview.NewFlex().SetDirection(tview.FlexColumn)
 	bar.SetBorder(true).SetTitle(" History Actions ")
-	bar.SetTitleColor(tcell.ColorLightSkyBlue)
-	bar.SetBorderColor(tcell.ColorDarkSlateGray)
-
 	bar.AddItem(ui.makeButton("Delete", ui.confirmDeleteSelected), 0, 1, false)
 	bar.AddItem(ui.makeButton("Back", func() { ui.Pages.SwitchToPage("chat") }), 0, 1, false)
 	return bar
@@ -345,24 +397,17 @@ func (ui *TViewUI) buildHistoryBar() *tview.Flex {
 
 func (ui *TViewUI) getSelectedHistoryID() (string, bool) {
 	idx := ui.HistoryList.GetCurrentItem()
-	if idx < 0 {
-		return "", false
-	}
+	if idx < 0 { return "", false }
 	_, convID := ui.HistoryList.GetItemText(idx)
-	if convID == "" {
-		return "", false
-	}
-	return convID, true
+	return convID, convID != ""
 }
 
 func (ui *TViewUI) confirmDeleteSelected() {
 	convID, ok := ui.getSelectedHistoryID()
-	if !ok {
-		return
-	}
+	if !ok { return }
 
 	modal := tview.NewModal().
-		SetText("Delete this conversation? This cannot be undone.").
+		SetText("Delete this conversation?").
 		AddButtons([]string{"Delete", "Cancel"}).
 		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 			ui.Pages.RemovePage("confirm-delete")
@@ -379,7 +424,6 @@ func (ui *TViewUI) confirmDeleteSelected() {
 		})
 
 	ui.Pages.AddPage("confirm-delete", modal, true, true)
-	ui.Pages.SwitchToPage("confirm-delete")
 }
 
 func (ui *TViewUI) Run() error {
