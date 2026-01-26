@@ -99,13 +99,13 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 			if _, item := ui.MainFlex.GetItem(0).(*tview.List); item {
 				ui.MainFlex.RemoveItem(ui.Sidebar)
 			} else {
-				ui.MainFlex.AddItem(ui.Sidebar, 20, 1, false)
-				// Reorder so it's first
-				items := []tview.Primitive{}
-				for i := 0; i < ui.MainFlex.GetItemCount(); i++ {
-					items = append(items, ui.MainFlex.GetItem(i))
-				}
-				// This is a bit hacky in tview flex, usually you'd rebuild or use a fixed structure
+				// Re-insert at start
+				oldFlex := ui.MainFlex
+				ui.MainFlex = tview.NewFlex().SetDirection(tview.FlexColumn).
+					AddItem(ui.Sidebar, 20, 1, false).
+					AddItem(oldFlex.GetItem(0), 0, 4, true)
+				ui.Pages.AddPage("chat", ui.MainFlex, true, true)
+				ui.Pages.SwitchToPage("chat")
 			}
 			return nil
 		}
@@ -160,18 +160,8 @@ func (ui *TViewUI) setupChatView() {
 }
 
 func (ui *TViewUI) handleInput(input string) {
-	if strings.HasPrefix(input, "/read ") {
-		filePath := strings.TrimSpace(input[6:])
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			ui.appendSystemMsg(fmt.Sprintf("Error reading file: %v", err))
-			return
-		}
-		ui.messages = append(ui.messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleUser,
-			Content: fmt.Sprintf("Content of file %s:\n\n%s", filePath, string(content)),
-		})
-		ui.refreshChat()
+	if strings.HasPrefix(input, "/") {
+		ui.handleCommand(input)
 		return
 	}
 
@@ -190,6 +180,73 @@ func (ui *TViewUI) handleInput(input string) {
 
 	ui.refreshChat()
 	go ui.streamOpenAIResponse()
+}
+
+func (ui *TViewUI) handleCommand(input string) {
+	parts := strings.Fields(input)
+	cmd := parts[0]
+	args := parts[1:]
+
+	switch cmd {
+	case "/read":
+		if len(args) == 0 {
+			ui.appendSystemMsg("Usage: /read <path>")
+			return
+		}
+		filePath := args[0]
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			ui.appendSystemMsg(fmt.Sprintf("Error reading file: %v", err))
+			return
+		}
+		ui.messages = append(ui.messages, openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleUser,
+			Content: fmt.Sprintf("Content of file %s:\n\n%s", filePath, string(content)),
+		})
+		ui.refreshChat()
+
+	case "/clear":
+		ui.messages = []openai.ChatCompletionMessage{}
+		// We don't clear convID here to allow continuing the same session if desired, 
+		// but usually /clear means a fresh start in TUI context.
+		// If user wants to keep the DB record but clear screen:
+		ui.ChatView.Clear()
+		ui.refreshChat()
+		ui.appendSystemMsg("Chat display cleared.")
+
+	case "/config":
+		ui.appendSystemMsg(fmt.Sprintf("Current Config:\n- BaseURL: %s\n- Model: %s\n- System Prompt: %s", 
+			ui.config.BaseURL, ui.config.Model, ui.systemPrompt))
+
+	case "/save":
+		filename := "chat_save.md"
+		if len(args) > 0 {
+			filename = args[0]
+		}
+		ui.exportToFile(filename)
+
+	case "/help":
+		ui.appendSystemMsg("Commands:\n/read <path> - Import file\n/clear - Clear screen\n/config - Show current config\n/save [path] - Save to file\n/help - Show this help")
+
+	default:
+		ui.appendSystemMsg(fmt.Sprintf("Unknown command: %s. Type /help for list.", cmd))
+	}
+}
+
+func (ui *TViewUI) exportToFile(filename string) {
+	var sb strings.Builder
+	if ui.systemPrompt != "" {
+		sb.WriteString(fmt.Sprintf("> System Prompt: %s\n\n", ui.systemPrompt))
+	}
+	for _, msg := range ui.messages {
+		sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n---\n\n", strings.ToUpper(msg.Role), msg.Content))
+	}
+	err := os.WriteFile(filename, []byte(sb.String()), 0644)
+	if err != nil {
+		ui.appendSystemMsg(fmt.Sprintf("Save failed: %v", err))
+	} else {
+		ui.appendSystemMsg("History saved to " + filename)
+	}
 }
 
 func (ui *TViewUI) streamOpenAIResponse() {
@@ -355,15 +412,7 @@ func (ui *TViewUI) newConversation() {
 
 func (ui *TViewUI) exportHistory() {
 	filename := fmt.Sprintf("chat_export_%d.md", time.Now().Unix())
-	var sb strings.Builder
-	if ui.systemPrompt != "" {
-		sb.WriteString(fmt.Sprintf("> System Prompt: %s\n\n", ui.systemPrompt))
-	}
-	for _, msg := range ui.messages {
-		sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n---\n\n", strings.ToUpper(msg.Role), msg.Content))
-	}
-	os.WriteFile(filename, []byte(sb.String()), 0644)
-	ui.appendSystemMsg("History exported to " + filename)
+	ui.exportToFile(filename)
 }
 
 func (ui *TViewUI) makeButton(label string, action func()) *tview.Button {
