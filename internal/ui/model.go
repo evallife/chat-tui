@@ -16,10 +16,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lrstanley/bubblezone"
 	"github.com/sashabaranov/go-openai"
-	"github.com/user/xftui/internal/api"
-	"github.com/user/xftui/internal/config"
-	"github.com/user/xftui/internal/storage"
-	"github.com/user/xftui/internal/types"
+	"github.com/evallife/chat-tui/internal/api"
+	"github.com/evallife/chat-tui/internal/config"
+	"github.com/evallife/chat-tui/internal/storage"
+	"github.com/evallife/chat-tui/internal/types"
 )
 
 type sessionState uint

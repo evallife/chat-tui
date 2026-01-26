@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/user/xftui/internal/config"
-	"github.com/user/xftui/internal/storage"
-	"github.com/user/xftui/internal/types"
-	"github.com/user/xftui/internal/ui"
+	"github.com/evallife/chat-tui/internal/config"
+	"github.com/evallife/chat-tui/internal/storage"
+	"github.com/evallife/chat-tui/internal/types"
+	"github.com/evallife/chat-tui/internal/ui"
 )
 
 func main() {

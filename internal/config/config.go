@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"github.com/user/xftui/internal/types"
+	"github.com/evallife/chat-tui/internal/types"
 )
 
 func GetConfigPath() string {

@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"github.com/sashabaranov/go-openai"
-	"github.com/user/xftui/internal/types"
+	"github.com/evallife/chat-tui/internal/types"
 )
 
 type Client struct {

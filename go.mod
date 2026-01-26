@@ -1,4 +1,4 @@
-module github.com/user/xftui
+module github.com/evallife/chat-tui
 
 go 1.25.6
 
