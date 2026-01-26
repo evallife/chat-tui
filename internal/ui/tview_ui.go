@@ -371,12 +371,18 @@ func (ui *TViewUI) setupHistoryView() {
 		// Selection-based activation (triggered by Enter or Mouse Click)
 		// We use a timer to detect Double-Click
 		now := time.Now()
-		if index == ui.lastClickedIdx && now.Sub(ui.lastClickedTime) < 500*time.Millisecond {
+		// Retrieve ID again to be absolutely sure
+		_, id := ui.HistoryList.GetItemText(index)
+		if id == "" { return }
+
+		if index == ui.lastClickedIdx && now.Sub(ui.lastClickedTime) < 800*time.Millisecond {
 			// Double click detected
-			ui.loadConversation(secondaryText)
+			ui.loadConversation(id)
+			ui.lastClickedIdx = -1 // Reset
+		} else {
+			ui.lastClickedIdx = index
+			ui.lastClickedTime = now
 		}
-		ui.lastClickedIdx = index
-		ui.lastClickedTime = now
 	})
 	
 	ui.HistoryList.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
