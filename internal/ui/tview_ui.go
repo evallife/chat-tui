@@ -338,16 +338,19 @@ func (ui *TViewUI) appendSystemMsg(msg string) {
 }
 
 func (ui *TViewUI) setupHistoryView() {
-	ui.HistoryList = tview.NewList().
-		SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
-			// Double click or Enter to LOAD
-			ui.convID = secondaryText
-			conv, _ := ui.storage.GetConversation(ui.convID)
-			ui.systemPrompt = conv.SystemPrompt
-			ui.messages, _ = ui.storage.GetMessages(ui.convID)
-			ui.refreshChat()
-			ui.Pages.SwitchToPage("chat")
-		})
+	ui.HistoryList = tview.NewList()
+	ui.HistoryList.SetBorder(true).SetTitle(" History (Enter to Load) ")
+	ui.HistoryList.ShowSecondaryText(false) // Hide ID in list for cleaner look
+
+	ui.HistoryList.SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		// This is called on Enter OR double click
+		ui.convID = secondaryText
+		conv, _ := ui.storage.GetConversation(ui.convID)
+		ui.systemPrompt = conv.SystemPrompt
+		ui.messages, _ = ui.storage.GetMessages(ui.convID)
+		ui.refreshChat()
+		ui.Pages.SwitchToPage("chat")
+	})
 	
 	ui.HistoryList.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
 		// Single click or Selection change to PREVIEW
