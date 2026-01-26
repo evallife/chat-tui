@@ -97,3 +97,19 @@ func (m *Manager) ListConversations() ([]ConvSummary, error) {
 	}
 	return convs, nil
 }
+
+func (m *Manager) DeleteConversation(convID string) error {
+	tx, err := m.db.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM messages WHERE conversation_id = ?", convID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM conversations WHERE id = ?", convID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}

@@ -9,12 +9,15 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lrstanley/bubblezone"
 	"github.com/sashabaranov/go-openai"
 	"github.com/user/xftui/internal/api"
+	"github.com/user/xftui/internal/config"
 	"github.com/user/xftui/internal/storage"
 	"github.com/user/xftui/internal/types"
 )
@@ -47,6 +50,8 @@ type Model struct {
 	viewport      viewport.Model
 	textarea      textarea.Model
 	list          list.Model
+	inputs        []textinput.Model // For settings: 0: APIKey, 1: BaseURL, 2: Model
+	focusIndex    int               // Which input is focused in settings
 	messages      []openai.ChatCompletionMessage
 	apiClient     *api.Client
 	storage       *storage.Manager
@@ -58,6 +63,7 @@ type Model struct {
 	isThinking    bool
 	currResponse  string
 	currentStream *openai.ChatCompletionStream
+	zoneManager   *zone.Manager
 }
 
 func NewModel(cfg types.Config, store *storage.Manager) Model {
@@ -73,21 +79,37 @@ func NewModel(cfg types.Config, store *storage.Manager) Model {
 	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	l.Title = "History Conversations"
 
+	// Settings inputs
+	inputs := make([]textinput.Model, 3)
+	inputs[0] = textinput.New()
+	inputs[0].Placeholder = "API Key"
+	inputs[0].SetValue(cfg.APIKey)
+
+	inputs[1] = textinput.New()
+	inputs[1].Placeholder = "Base URL"
+	inputs[1].SetValue(cfg.BaseURL)
+
+	inputs[2] = textinput.New()
+	inputs[2].Placeholder = "Model (e.g. gpt-4o)"
+	inputs[2].SetValue(cfg.Model)
+
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
 		glamour.WithWordWrap(80),
 	)
 
 	return Model{
-		config:    cfg,
-		state:     chatView,
-		textarea:  ta,
-		viewport:  vp,
-		list:      l,
-		renderer:  renderer,
-		apiClient: api.NewClient(cfg),
-		storage:   store,
-		messages:  []openai.ChatCompletionMessage{},
+		config:      cfg,
+		state:       chatView,
+		textarea:    ta,
+		viewport:    vp,
+		list:        l,
+		inputs:      inputs,
+		renderer:    renderer,
+		apiClient:   api.NewClient(cfg),
+		storage:     store,
+		messages:    []openai.ChatCompletionMessage{},
+		zoneManager: zone.New(),
 	}
 }
 
@@ -100,6 +122,86 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		tiCmd tea.Cmd
 		vpCmd tea.Cmd
 	)
+
+	// Settings view update logic
+	if m.state == settingsView {
+		switch msg := msg.(type) {
+		case tea.MouseMsg:
+			if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+				for i := range m.inputs {
+					if m.zoneManager.Get(fmt.Sprintf("input-%d", i)).InBounds(msg) {
+						m.focusIndex = i
+						for j := range m.inputs {
+							if i == j {
+								m.inputs[j].Focus()
+							} else {
+								m.inputs[j].Blur()
+							}
+						}
+						return m, nil
+					}
+				}
+				if m.zoneManager.Get("save-btn").InBounds(msg) {
+					m.focusIndex = len(m.inputs)
+					// Trigger save
+					m.config.APIKey = m.inputs[0].Value()
+					m.config.BaseURL = m.inputs[1].Value()
+					m.config.Model = m.inputs[2].Value()
+					config.SaveConfig(m.config)
+					m.apiClient = api.NewClient(m.config)
+					m.state = chatView
+					return m, nil
+				}
+			}
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "esc":
+				m.state = chatView
+				return m, nil
+			case "tab", "shift+tab", "up", "down":
+				s := msg.String()
+				if s == "up" || s == "shift+tab" {
+					m.focusIndex--
+				} else {
+					m.focusIndex++
+				}
+
+				if m.focusIndex > len(m.inputs) {
+					m.focusIndex = 0
+				} else if m.focusIndex < 0 {
+					m.focusIndex = len(m.inputs)
+				}
+
+				cmds := make([]tea.Cmd, len(m.inputs))
+				for i := 0; i < len(m.inputs); i++ {
+					if i == m.focusIndex {
+						cmds[i] = m.inputs[i].Focus()
+						continue
+					}
+					m.inputs[i].Blur()
+				}
+				return m, tea.Batch(cmds...)
+
+			case "enter":
+				if m.focusIndex == len(m.inputs) { // Save button logic
+					m.config.APIKey = m.inputs[0].Value()
+					m.config.BaseURL = m.inputs[1].Value()
+					m.config.Model = m.inputs[2].Value()
+					config.SaveConfig(m.config)
+					m.apiClient = api.NewClient(m.config) // Re-init client
+					m.state = chatView
+					return m, nil
+				}
+			}
+		}
+
+		// Update all inputs
+		cmds := make([]tea.Cmd, len(m.inputs))
+		for i := range m.inputs {
+			m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
+		}
+		return m, tea.Batch(cmds...)
+	}
 
 	if m.state == historyView {
 		m.list, tiCmd = m.list.Update(msg) // Overuse tiCmd but it's fine for now
@@ -123,6 +225,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.viewport, vpCmd = m.viewport.Update(msg)
 
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if m.zoneManager.Get("textarea").InBounds(msg) {
+				m.textarea.Focus()
+			}
+		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -164,6 +272,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.list.SetItems(items)
 			m.state = historyView
+			return m, nil
+		case "ctrl+s":
+			m.state = settingsView
+			m.focusIndex = 0
+			m.inputs[0].Focus()
 			return m, nil
 		case "ctrl+e":
 			return m, m.exportHistory()
@@ -231,6 +344,28 @@ func (m *Model) renderMessages() {
 }
 
 func (m Model) View() string {
+	if m.state == settingsView {
+		var b strings.Builder
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5")).Render("SETTINGS\n\n"))
+
+		for i := range m.inputs {
+			b.WriteString(fmt.Sprintf("%s\n%s\n\n",
+				lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(m.inputs[i].Placeholder),
+				m.zoneManager.Mark(fmt.Sprintf("input-%d", i), m.inputs[i].View())))
+		}
+
+		buttonStyle := lipgloss.NewStyle().Padding(0, 3).MarginTop(1)
+		if m.focusIndex == len(m.inputs) {
+			buttonStyle = buttonStyle.Background(lipgloss.Color("5")).Foreground(lipgloss.Color("15"))
+		} else {
+			buttonStyle = buttonStyle.Background(lipgloss.Color("240")).Foreground(lipgloss.Color("250"))
+		}
+		b.WriteString(m.zoneManager.Mark("save-btn", buttonStyle.Render(" SAVE ")))
+		b.WriteString("\n\n[Tab: Switch | Enter: Save/Action | Esc: Back]")
+
+		return m.zoneManager.Scan(lipgloss.NewStyle().Padding(1, 4).Render(b.String()))
+	}
+
 	if m.state == historyView {
 		return m.list.View()
 	}
@@ -242,14 +377,14 @@ func (m Model) View() string {
 		body = m.viewport.View()
 	}
 
-		footer := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("\n[Enter: Send | Ctrl+N: New | Ctrl+H: History | Ctrl+E: Export | Esc: Quit]")
-	return lipgloss.JoinVertical(
+	footer := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("\n[Enter: Send | Ctrl+N: New | Ctrl+H: History | Ctrl+S: Settings | Ctrl+E: Export | Esc: Quit]")
+	return m.zoneManager.Scan(lipgloss.JoinVertical(
 		lipgloss.Left,
 		body,
 		"\n",
-		m.textarea.View(),
+		m.zoneManager.Mark("textarea", m.textarea.View()),
 		footer,
-	)
+	))
 }
 
 func (m Model) handleInput(input string) (Model, tea.Cmd) {
