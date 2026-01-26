@@ -37,7 +37,7 @@ jobs:
           mkdir -p dist
           EXT=""
           if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
-          GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" go build -o "dist/xftui-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}" ./cmd
+          GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" go build -o "dist/chat-tui-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}" ./cmd/chat-tui
 
       - name: Determine tag
         id: tag

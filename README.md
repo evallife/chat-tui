@@ -30,9 +30,9 @@
 
 #### 方式一：直接通过 Go 安装 (推荐)
 ```bash
-go install github.com/evallife/chat-tui/cmd@latest
+go install github.com/evallife/chat-tui/cmd/chat-tui@latest
 ```
-*注意：安装后的执行文件名默认为 `cmd`，建议重命名或通过本地构建自定义名称。*
+*注意：安装后的执行文件名将默认为 `chat-tui`。*
 
 #### 方式二：手动构建
 ```bash
@@ -41,7 +41,7 @@ git clone https://github.com/evallife/chat-tui.git
 cd chat-tui
 
 # 编译并命名为 chat-tui
-go build -o chat-tui ./cmd
+go build -o chat-tui ./cmd/chat-tui
 
 # 运行
 ./chat-tui
@@ -84,7 +84,7 @@ go build -o chat-tui ./cmd
 ## 📝 高级指令
 
 在聊天输入框内输入：
-- `/read <path>`：读取指定路径的文件内容并发送给 AI（例如：`/read ./cmd/chat-tui.go`）。
+- `/read <path>`：读取指定路径的文件内容并发送给 AI（例如：`/read ./cmd/chat-tui/main.go`）。
 
 ---
 
