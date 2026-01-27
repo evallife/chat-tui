@@ -44,6 +44,7 @@ type TViewUI struct {
 	
 	// Input processing state
 	isProcessingInput bool
+	isInsertingNewline bool  // Flag to prevent SetChangedFunc from cleaning manual newlines
 }
 
 func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
@@ -91,6 +92,26 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 
 	// Global key handlers
 	ui.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// Check if the input field is focused
+		if ui.App.GetFocus() == ui.InputField {
+			// Handle Shift + Enter for new line in input field
+			if event.Key() == tcell.KeyEnter && event.Modifiers()&tcell.ModShift != 0 {
+				// Get current text
+				text := ui.InputField.GetText()
+				
+				// Set flag to prevent SetChangedFunc from cleaning the newline
+				ui.isInsertingNewline = true
+				
+				// Insert newline at current cursor position
+				// tview.InputField doesn't expose cursor position, so we append at the end
+				newText := text + "\n"
+				ui.InputField.SetText(newText)
+				
+				// Return nil to prevent further processing
+				return nil
+			}
+		}
+		
 		switch event.Key() {
 		case tcell.KeyCtrlN:
 			ui.newConversation()
@@ -155,7 +176,7 @@ func (ui *TViewUI) setupChatView() {
 	ui.InputField = tview.NewInputField().
 		SetLabel("> ").
 		SetFieldWidth(0)
-	ui.InputField.SetBorder(true).SetTitle(" Input (Enter to send) ")
+	ui.InputField.SetBorder(true).SetTitle(" Input (Enter to send, Shift+Enter for new line) ")
 	ui.InputField.SetTitleColor(tcell.ColorLightSkyBlue)
 	ui.InputField.SetFieldBackgroundColor(tcell.ColorBlack)
 	ui.InputField.SetFieldTextColor(tcell.ColorWhite)
@@ -163,6 +184,12 @@ func (ui *TViewUI) setupChatView() {
 
 	// Handle input changes to prevent multi-line paste from sending multiple times
 	ui.InputField.SetChangedFunc(func(text string) {
+		// If we're manually inserting a newline via Shift+Enter, skip cleaning
+		if ui.isInsertingNewline {
+			ui.isInsertingNewline = false
+			return
+		}
+		
 		// If the text contains newlines, it's likely from a multi-line paste
 		if strings.Contains(text, "\n") && !ui.isProcessingInput {
 			// Replace newlines with spaces to prevent multiple sends
