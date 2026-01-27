@@ -41,6 +41,9 @@ type TViewUI struct {
 	// Selection state
 	lastClickedIdx int
 	lastClickedTime time.Time
+	
+	// Input processing state
+	isProcessingInput bool
 }
 
 func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
@@ -99,7 +102,12 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 			ui.showSettings()
 			return nil
 		case tcell.KeyCtrlE:
-			ui.exportHistory()
+			// Check if Shift is pressed for Ctrl+Shift+E
+			if event.Modifiers()&tcell.ModShift != 0 {
+				ui.showExportDialog()
+			} else {
+				ui.exportHistory()
+			}
 			return nil
 		case tcell.KeyCtrlB: // Toggle sidebar
 			if _, item := ui.MainFlex.GetItem(0).(*tview.List); item {
@@ -153,6 +161,19 @@ func (ui *TViewUI) setupChatView() {
 	ui.InputField.SetFieldTextColor(tcell.ColorWhite)
 	ui.InputField.SetLabelColor(tcell.ColorLightCyan)
 
+	// Handle input changes to prevent multi-line paste from sending multiple times
+	ui.InputField.SetChangedFunc(func(text string) {
+		// If the text contains newlines, it's likely from a multi-line paste
+		if strings.Contains(text, "\n") && !ui.isProcessingInput {
+			// Replace newlines with spaces to prevent multiple sends
+			cleanText := strings.ReplaceAll(text, "\n", " ")
+			// Remove carriage returns too
+			cleanText = strings.ReplaceAll(cleanText, "\r", " ")
+			// Update the field with cleaned text
+			ui.InputField.SetText(cleanText)
+		}
+	})
+
 	// Autocomplete for slash commands
 	commands := []string{"/read", "/clear", "/config", "/save", "/help"}
 	ui.InputField.SetAutocompleteFunc(func(currentText string) (entries []string) {
@@ -175,12 +196,27 @@ func (ui *TViewUI) setupChatView() {
 
 	ui.InputField.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
+			// Prevent multiple simultaneous sends
+			if ui.isProcessingInput {
+				return
+			}
+			
 			text := ui.InputField.GetText()
 			if text == "" {
 				return
 			}
+			
+			// Set processing flag
+			ui.isProcessingInput = true
+			
+			// Clear the input field immediately to prevent multiple sends
 			ui.InputField.SetText("")
+			
+			// Handle the complete text (including multi-line content)
 			ui.handleInput(text)
+			
+			// Reset processing flag
+			ui.isProcessingInput = false
 		}
 	})
 }
@@ -248,8 +284,15 @@ func (ui *TViewUI) handleCommand(input string) {
 		}
 		ui.exportToFile(filename)
 
+	case "/export":
+		filename := fmt.Sprintf("qa_export_%d.md", time.Now().Unix())
+		if len(args) > 0 {
+			filename = args[0]
+		}
+		ui.exportToFile(filename)
+
 	case "/help":
-		ui.appendSystemMsg("Commands:\n/read <path> - Import file\n/clear - Clear screen\n/config - Show current config\n/save [path] - Save to file\n/help - Show this help")
+		ui.appendSystemMsg("Commands:\n/read <path> - Import file\n/clear - Clear screen\n/config - Show current config\n/save [path] - Save to file\n/export [path] - Export Q&A to file\n/help - Show this help")
 
 	default:
 		ui.appendSystemMsg(fmt.Sprintf("Unknown command: %s. Type /help for list.", cmd))
@@ -262,7 +305,13 @@ func (ui *TViewUI) exportToFile(filename string) {
 		sb.WriteString(fmt.Sprintf("> System Prompt: %s\n\n", ui.systemPrompt))
 	}
 	for _, msg := range ui.messages {
-		sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n---\n\n", strings.ToUpper(msg.Role), msg.Content))
+		roleLabel := strings.ToUpper(msg.Role)
+		if msg.Role == "user" {
+			roleLabel = "Q"
+		} else if msg.Role == "assistant" {
+			roleLabel = "A"
+		}
+		sb.WriteString(fmt.Sprintf("## %s: %s\n\n---\n\n", roleLabel, msg.Content))
 	}
 	err := os.WriteFile(filename, []byte(sb.String()), 0644)
 	if err != nil {
@@ -512,6 +561,7 @@ func (ui *TViewUI) buildFooterBar() *tview.Flex {
 	bar.SetBorder(true).SetTitle(" Actions ")
 	bar.AddItem(ui.makeButton("New", ui.newConversation), 0, 1, false)
 	bar.AddItem(ui.makeButton("History", ui.showHistory), 0, 1, false)
+	bar.AddItem(ui.makeButton("Export", ui.exportHistory), 0, 1, false)
 	bar.AddItem(ui.makeButton("Prompts", ui.showSystemPrompts), 0, 1, false)
 	bar.AddItem(ui.makeButton("Settings", ui.showSettings), 0, 1, false)
 	bar.AddItem(ui.makeButton("Quit", func() { ui.App.Stop() }), 0, 1, false)
@@ -555,6 +605,46 @@ func (ui *TViewUI) confirmDeleteSelected() {
 		})
 
 	ui.Pages.AddPage("confirm-delete", modal, true, true)
+}
+
+func (ui *TViewUI) showExportDialog() {
+	// Create a form for export options
+	form := tview.NewForm()
+	form.SetBorder(true).SetTitle(" Export Options ").SetTitleAlign(tview.AlignLeft)
+
+	var filename string
+	defaultFilename := fmt.Sprintf("qa_export_%d.md", time.Now().Unix())
+
+	form.AddInputField("Filename:", defaultFilename, 50, nil, func(text string) {
+		filename = text
+	})
+
+	form.AddButton("Export", func() {
+		if filename == "" {
+			filename = defaultFilename
+		}
+		ui.exportToFile(filename)
+		ui.Pages.RemovePage("export-dialog")
+	})
+
+	form.AddButton("Cancel", func() {
+		ui.Pages.RemovePage("export-dialog")
+	})
+
+	form.SetCancelFunc(func() {
+		ui.Pages.RemovePage("export-dialog")
+	})
+
+	// Create a modal-like container
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nil, 0, 1, false).
+			AddItem(form, 60, 1, true).
+			AddItem(nil, 0, 1, false), 8, 1, true).
+		AddItem(nil, 0, 1, false)
+
+	ui.Pages.AddPage("export-dialog", modal, true, true)
 }
 
 func (ui *TViewUI) Run() error {
