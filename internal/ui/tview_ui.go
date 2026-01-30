@@ -45,6 +45,11 @@ type TViewUI struct {
 	// Input processing state
 	isProcessingInput bool
 	isInsertingNewline bool  // Flag to prevent SetChangedFunc from cleaning manual newlines
+
+	// Input history state
+	inputHistory []string
+	historyIndex int
+	draftInput   string
 }
 
 func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
@@ -55,6 +60,7 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 		storage: store,
 		apiClient: api.NewClient(cfg),
 		lastClickedIdx: -1,
+		historyIndex: -1,
 	}
 
 	// Theme / styling
@@ -94,6 +100,16 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 	ui.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// Check if the input field is focused
 		if ui.App.GetFocus() == ui.InputField {
+			if event.Modifiers() == 0 {
+				switch event.Key() {
+				case tcell.KeyUp:
+					ui.navigateHistory(-1)
+					return nil
+				case tcell.KeyDown:
+					ui.navigateHistory(1)
+					return nil
+				}
+			}
 			// Handle Shift + Enter for new line in input field
 			if event.Key() == tcell.KeyEnter && event.Modifiers()&tcell.ModShift != 0 {
 				// Get current text
@@ -176,6 +192,19 @@ func (ui *TViewUI) setupChatView() {
 	ui.InputField = tview.NewInputField().
 		SetLabel("> ").
 		SetFieldWidth(0)
+	ui.InputField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Modifiers() == 0 {
+			switch event.Key() {
+			case tcell.KeyUp:
+				ui.navigateHistory(-1)
+				return nil
+			case tcell.KeyDown:
+				ui.navigateHistory(1)
+				return nil
+			}
+		}
+		return event
+	})
 	ui.InputField.SetBorder(true).SetTitle(" Input (Enter to send, Shift+Enter for new line) ")
 	ui.InputField.SetTitleColor(tcell.ColorLightSkyBlue)
 	ui.InputField.SetFieldBackgroundColor(tcell.ColorBlack)
@@ -254,6 +283,7 @@ func (ui *TViewUI) handleInput(input string) {
 		return
 	}
 
+	ui.addInputHistory(input)
 	ui.messages = append(ui.messages, openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleUser,
 		Content: input,
@@ -269,6 +299,49 @@ func (ui *TViewUI) handleInput(input string) {
 
 	ui.refreshChat()
 	go ui.streamOpenAIResponse()
+}
+
+func (ui *TViewUI) addInputHistory(input string) {
+	if input == "" {
+		return
+	}
+	ui.inputHistory = append(ui.inputHistory, input)
+	ui.historyIndex = -1
+	ui.draftInput = ""
+}
+
+func (ui *TViewUI) navigateHistory(direction int) {
+	if len(ui.inputHistory) == 0 {
+		return
+	}
+
+	if ui.historyIndex == -1 {
+		ui.draftInput = ui.InputField.GetText()
+	}
+
+	switch direction {
+	case -1: // Up: older
+		if ui.historyIndex == -1 {
+			ui.historyIndex = len(ui.inputHistory) - 1
+		} else if ui.historyIndex > 0 {
+			ui.historyIndex--
+		}
+	case 1: // Down: newer
+		if ui.historyIndex == -1 {
+			return
+		}
+		if ui.historyIndex < len(ui.inputHistory)-1 {
+			ui.historyIndex++
+		} else {
+			ui.historyIndex = -1
+			ui.InputField.SetText(ui.draftInput)
+			return
+		}
+	}
+
+	if ui.historyIndex >= 0 && ui.historyIndex < len(ui.inputHistory) {
+		ui.InputField.SetText(ui.inputHistory[ui.historyIndex])
+	}
 }
 
 func (ui *TViewUI) handleCommand(input string) {
