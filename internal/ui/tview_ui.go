@@ -8,27 +8,27 @@ import (
 	"time"
 
 	"github.com/charmbracelet/glamour"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
-	"github.com/sashabaranov/go-openai"
 	"github.com/evallife/chat-tui/internal/api"
 	"github.com/evallife/chat-tui/internal/config"
 	"github.com/evallife/chat-tui/internal/storage"
 	"github.com/evallife/chat-tui/internal/types"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+	"github.com/sashabaranov/go-openai"
 )
 
 type TViewUI struct {
 	App            *tview.Application
 	Pages          *tview.Pages
 	ChatView       *tview.TextView
-	InputField     *tview.InputField
+	InputField     *tview.TextArea
 	HistoryList    *tview.List
 	HistoryPreview *tview.TextView
 	SettingsForm   *tview.Form
-	
+
 	// Sidebar components
-	Sidebar      *tview.List
-	MainFlex     *tview.Flex
+	Sidebar  *tview.List
+	MainFlex *tview.Flex
 
 	config       types.Config
 	storage      *storage.Manager
@@ -39,12 +39,11 @@ type TViewUI struct {
 	renderer     *glamour.TermRenderer
 
 	// Selection state
-	lastClickedIdx int
+	lastClickedIdx  int
 	lastClickedTime time.Time
-	
+
 	// Input processing state
 	isProcessingInput bool
-	isInsertingNewline bool  // Flag to prevent SetChangedFunc from cleaning manual newlines
 
 	// Input history state
 	inputHistory []string
@@ -54,13 +53,13 @@ type TViewUI struct {
 
 func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 	ui := &TViewUI{
-		App:     tview.NewApplication(),
-		Pages:   tview.NewPages(),
-		config:  cfg,
-		storage: store,
-		apiClient: api.NewClient(cfg),
+		App:            tview.NewApplication(),
+		Pages:          tview.NewPages(),
+		config:         cfg,
+		storage:        store,
+		apiClient:      api.NewClient(cfg),
 		lastClickedIdx: -1,
-		historyIndex: -1,
+		historyIndex:   -1,
 	}
 
 	// Theme / styling
@@ -94,40 +93,10 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 		AddItem(chatFlex, 0, 4, true)
 
 	ui.Pages.AddPage("chat", ui.MainFlex, true, true)
-	ui.App.SetRoot(ui.Pages, true).EnableMouse(true)
+	ui.App.SetRoot(ui.Pages, true).EnableMouse(true).EnablePaste(true)
 
 	// Global key handlers
 	ui.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		// Check if the input field is focused
-		if ui.App.GetFocus() == ui.InputField {
-			if event.Modifiers() == 0 {
-				switch event.Key() {
-				case tcell.KeyUp:
-					ui.navigateHistory(-1)
-					return nil
-				case tcell.KeyDown:
-					ui.navigateHistory(1)
-					return nil
-				}
-			}
-			// Handle Shift + Enter for new line in input field
-			if event.Key() == tcell.KeyEnter && event.Modifiers()&tcell.ModShift != 0 {
-				// Get current text
-				text := ui.InputField.GetText()
-				
-				// Set flag to prevent SetChangedFunc from cleaning the newline
-				ui.isInsertingNewline = true
-				
-				// Insert newline at current cursor position
-				// tview.InputField doesn't expose cursor position, so we append at the end
-				newText := text + "\n"
-				ui.InputField.SetText(newText)
-				
-				// Return nil to prevent further processing
-				return nil
-			}
-		}
-		
 		switch event.Key() {
 		case tcell.KeyCtrlN:
 			ui.newConversation()
@@ -173,7 +142,7 @@ func (ui *TViewUI) setupSidebar() {
 		AddItem("Settings", "Config API", 's', ui.showSettings).
 		AddItem("System Prompts", "Change AI role", 'p', ui.showSystemPrompts).
 		AddItem("Quit", "Exit app", 'q', func() { ui.App.Stop() })
-	
+
 	ui.Sidebar.SetBorder(true).SetTitle(" Menu ")
 	ui.Sidebar.SetTitleColor(tcell.ColorYellow)
 }
@@ -189,9 +158,10 @@ func (ui *TViewUI) setupChatView() {
 	ui.ChatView.SetBorder(true).SetTitle(" Chat History ")
 	ui.ChatView.SetTitleColor(tcell.ColorLightSkyBlue)
 
-	ui.InputField = tview.NewInputField().
+	ui.InputField = tview.NewTextArea().
 		SetLabel("> ").
-		SetFieldWidth(0)
+		SetPlaceholder("Type a message (Shift+Enter for new line)...")
+	ui.InputField.SetSize(3, 0)
 	ui.InputField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Modifiers() == 0 {
 			switch event.Key() {
@@ -201,80 +171,38 @@ func (ui *TViewUI) setupChatView() {
 			case tcell.KeyDown:
 				ui.navigateHistory(1)
 				return nil
+			case tcell.KeyEnter:
+				// Prevent multiple simultaneous sends
+				if ui.isProcessingInput {
+					return nil
+				}
+
+				text := ui.InputField.GetText()
+				if text == "" {
+					return nil
+				}
+
+				// Set processing flag
+				ui.isProcessingInput = true
+
+				// Clear the input field immediately to prevent multiple sends
+				ui.InputField.SetText("", true)
+
+				// Handle the complete text (including multi-line content)
+				ui.handleInput(text)
+
+				// Reset processing flag
+				ui.isProcessingInput = false
+				return nil
 			}
 		}
 		return event
 	})
 	ui.InputField.SetBorder(true).SetTitle(" Input (Enter to send, Shift+Enter for new line) ")
 	ui.InputField.SetTitleColor(tcell.ColorLightSkyBlue)
-	ui.InputField.SetFieldBackgroundColor(tcell.ColorBlack)
-	ui.InputField.SetFieldTextColor(tcell.ColorWhite)
-	ui.InputField.SetLabelColor(tcell.ColorLightCyan)
-
-	// Handle input changes to prevent multi-line paste from sending multiple times
-	ui.InputField.SetChangedFunc(func(text string) {
-		// If we're manually inserting a newline via Shift+Enter, skip cleaning
-		if ui.isInsertingNewline {
-			ui.isInsertingNewline = false
-			return
-		}
-		
-		// If the text contains newlines, it's likely from a multi-line paste
-		if strings.Contains(text, "\n") && !ui.isProcessingInput {
-			// Replace newlines with spaces to prevent multiple sends
-			cleanText := strings.ReplaceAll(text, "\n", " ")
-			// Remove carriage returns too
-			cleanText = strings.ReplaceAll(cleanText, "\r", " ")
-			// Update the field with cleaned text
-			ui.InputField.SetText(cleanText)
-		}
-	})
-
-	// Autocomplete for slash commands
-	commands := []string{"/read", "/clear", "/config", "/save", "/help"}
-	ui.InputField.SetAutocompleteFunc(func(currentText string) (entries []string) {
-		if len(currentText) == 0 || !strings.HasPrefix(currentText, "/") {
-			return nil
-		}
-		for _, cmd := range commands {
-			if strings.HasPrefix(cmd, strings.ToLower(currentText)) {
-				entries = append(entries, cmd)
-			}
-		}
-		return
-	})
-	ui.InputField.SetAutocompletedFunc(func(text string, index, source int) bool {
-		if source != tview.AutocompletedNavigate {
-			ui.InputField.SetText(text)
-		}
-		return source == tview.AutocompletedEnter || source == tview.AutocompletedClick
-	})
-
-	ui.InputField.SetDoneFunc(func(key tcell.Key) {
-		if key == tcell.KeyEnter {
-			// Prevent multiple simultaneous sends
-			if ui.isProcessingInput {
-				return
-			}
-			
-			text := ui.InputField.GetText()
-			if text == "" {
-				return
-			}
-			
-			// Set processing flag
-			ui.isProcessingInput = true
-			
-			// Clear the input field immediately to prevent multiple sends
-			ui.InputField.SetText("")
-			
-			// Handle the complete text (including multi-line content)
-			ui.handleInput(text)
-			
-			// Reset processing flag
-			ui.isProcessingInput = false
-		}
-	})
+	ui.InputField.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack))
+	ui.InputField.SetLabelStyle(tcell.StyleDefault.Foreground(tcell.ColorLightCyan).Background(tcell.ColorBlack))
+	ui.InputField.SetPlaceholderStyle(tcell.StyleDefault.Foreground(tcell.ColorGray).Background(tcell.ColorBlack))
 }
 
 func (ui *TViewUI) handleInput(input string) {
@@ -291,7 +219,9 @@ func (ui *TViewUI) handleInput(input string) {
 
 	if ui.convID == "" {
 		title := input
-		if len(title) > 30 { title = title[:27] + "..." }
+		if len(title) > 30 {
+			title = title[:27] + "..."
+		}
 		id, _ := ui.storage.CreateConversation(title, ui.config.Model, ui.systemPrompt)
 		ui.convID = id
 	}
@@ -334,13 +264,13 @@ func (ui *TViewUI) navigateHistory(direction int) {
 			ui.historyIndex++
 		} else {
 			ui.historyIndex = -1
-			ui.InputField.SetText(ui.draftInput)
+			ui.InputField.SetText(ui.draftInput, true)
 			return
 		}
 	}
 
 	if ui.historyIndex >= 0 && ui.historyIndex < len(ui.inputHistory) {
-		ui.InputField.SetText(ui.inputHistory[ui.historyIndex])
+		ui.InputField.SetText(ui.inputHistory[ui.historyIndex], true)
 	}
 }
 
@@ -374,7 +304,7 @@ func (ui *TViewUI) handleCommand(input string) {
 		ui.appendSystemMsg("Chat display cleared.")
 
 	case "/config":
-		ui.appendSystemMsg(fmt.Sprintf("Current Config:\n- BaseURL: %s\n- Model: %s\n- System Prompt: %s", 
+		ui.appendSystemMsg(fmt.Sprintf("Current Config:\n- BaseURL: %s\n- Model: %s\n- System Prompt: %s",
 			ui.config.BaseURL, ui.config.Model, ui.systemPrompt))
 
 	case "/save":
@@ -477,8 +407,10 @@ func (ui *TViewUI) refreshChat() {
 	}
 	for _, m := range ui.messages {
 		roleColor := "purple"
-		if m.Role == openai.ChatMessageRoleAssistant { roleColor = "green" }
-		
+		if m.Role == openai.ChatMessageRoleAssistant {
+			roleColor = "green"
+		}
+
 		fmt.Fprintf(ui.ChatView, "[%s][b]%s[-][/b]\n", roleColor, strings.ToUpper(m.Role))
 		rendered, _ := ui.renderer.Render(m.Content)
 		fmt.Fprintf(ui.ChatView, "%s\n\n", tview.TranslateANSI(rendered))
@@ -522,7 +454,9 @@ func (ui *TViewUI) setupHistoryView() {
 		now := time.Now()
 		// Retrieve ID again to be absolutely sure
 		_, id := ui.HistoryList.GetItemText(index)
-		if id == "" { return }
+		if id == "" {
+			return
+		}
 
 		if index == ui.lastClickedIdx && now.Sub(ui.lastClickedTime) < 800*time.Millisecond {
 			// Double click detected
@@ -533,22 +467,30 @@ func (ui *TViewUI) setupHistoryView() {
 			ui.lastClickedTime = now
 		}
 	})
-	
+
 	ui.HistoryList.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
 		ui.HistoryPreview.Clear()
-		if secondaryText == "" { return }
+		if secondaryText == "" {
+			return
+		}
 		msgs, _ := ui.storage.GetMessages(secondaryText)
 		if len(msgs) == 0 {
 			fmt.Fprintf(ui.HistoryPreview, "[gray]No messages in this conversation.[-]")
 			return
 		}
 		for i, m := range msgs {
-			if i > 5 { break }
+			if i > 5 {
+				break
+			}
 			roleColor := "purple"
-			if m.Role == openai.ChatMessageRoleAssistant { roleColor = "green" }
+			if m.Role == openai.ChatMessageRoleAssistant {
+				roleColor = "green"
+			}
 			fmt.Fprintf(ui.HistoryPreview, "[%s][b]%s[-][/b]\n", roleColor, strings.ToUpper(m.Role))
 			summary := m.Content
-			if len(summary) > 200 { summary = summary[:197] + "..." }
+			if len(summary) > 200 {
+				summary = summary[:197] + "..."
+			}
 			fmt.Fprintf(ui.HistoryPreview, "%s\n\n", summary)
 		}
 	})
@@ -568,7 +510,9 @@ func (ui *TViewUI) setupHistoryView() {
 }
 
 func (ui *TViewUI) loadConversation(id string) {
-	if id == "" { return }
+	if id == "" {
+		return
+	}
 	ui.convID = id
 	conv, _ := ui.storage.GetConversation(ui.convID)
 	ui.systemPrompt = conv.SystemPrompt
@@ -678,14 +622,18 @@ func (ui *TViewUI) buildHistoryBar() *tview.Flex {
 
 func (ui *TViewUI) getSelectedHistoryID() (string, bool) {
 	idx := ui.HistoryList.GetCurrentItem()
-	if idx < 0 { return "", false }
+	if idx < 0 {
+		return "", false
+	}
 	_, convID := ui.HistoryList.GetItemText(idx)
 	return convID, convID != ""
 }
 
 func (ui *TViewUI) confirmDeleteSelected() {
 	convID, ok := ui.getSelectedHistoryID()
-	if !ok { return }
+	if !ok {
+		return
+	}
 
 	modal := tview.NewModal().
 		SetText("Delete this conversation?").
