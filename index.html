@@ -1,0 +1,177 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chat-TUI — 终端里的高性能 AI 对话</title>
+    <meta name="description" content="Chat-TUI 是一款极简主义、高性能的终端聊天应用。支持 OpenAI 协议、流式输出、多行输入、主题系统与 Copy Mode。" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="bg">
+      <div class="orb orb-a"></div>
+      <div class="orb orb-b"></div>
+      <div class="grid"></div>
+    </div>
+
+    <header class="nav">
+      <div class="logo">Chat‑TUI</div>
+      <nav class="links">
+        <a href="#features">特性</a>
+        <a href="#quickstart">安装</a>
+        <a href="#shortcuts">快捷键</a>
+        <a href="#themes">主题</a>
+      </nav>
+      <div class="cta">
+        <a class="btn ghost" href="https://github.com/evallife/chat-tui">GitHub</a>
+        <a class="btn primary" href="https://github.com/evallife/chat-tui/releases">下载</a>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="hero">
+        <div class="hero-text">
+          <p class="eyebrow">Terminal‑native · Streamed · Minimal</p>
+          <h1>把 AI 对话装进<br />你的终端里。</h1>
+          <p class="lead">
+            Chat‑TUI 是一款极简主义、高性能的终端聊天应用。支持 OpenAI 协议、流式输出、多行输入、Copy Mode 与主题系统，让你在 CLI 里拥有顺滑的 AI 体验。
+          </p>
+          <div class="hero-actions">
+            <a class="btn primary" href="#quickstart">快速开始</a>
+            <a class="btn ghost" href="#features">了解特性</a>
+          </div>
+          <div class="meta">
+            <span>Go 1.25+</span>
+            <span>OpenAI‑compatible</span>
+            <span>Cross‑platform</span>
+          </div>
+        </div>
+
+        <div class="hero-card">
+          <div class="card-title">CLI Preview</div>
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+              <span class="term-title">chat-tui</span>
+            </div>
+            <div class="terminal-body">
+              <div class="line"><span class="prompt">USER</span> 解释一下如何用 Go 写 TUI？</div>
+              <div class="line"><span class="prompt ai">ASSISTANT</span> 使用 tview/bubbletea 构建布局，事件驱动更新界面，渲染 Markdown 以提升阅读体验。</div>
+              <div class="line"><span class="prompt">USER</span> 粘贴多行代码会怎样？</div>
+              <div class="line"><span class="prompt ai">ASSISTANT</span> 多行粘贴会作为整体输入，不会被拆成多次发送。</div>
+              <div class="input-line">> Type a message (Shift+Enter for new line)...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="features">
+        <h2>为高效聊天而生的终端体验</h2>
+        <div class="grid-3">
+          <div class="feature">
+            <h3>流式输出</h3>
+            <p>打字机般的响应体验，边生成边阅读，告别等待。</p>
+          </div>
+          <div class="feature">
+            <h3>多行输入</h3>
+            <p>Shift+Enter 换行，Enter 发送，长文本编辑更自然。</p>
+          </div>
+          <div class="feature">
+            <h3>安全粘贴</h3>
+            <p>括号粘贴支持，多行内容不会被拆成多次发送。</p>
+          </div>
+          <div class="feature">
+            <h3>Copy Mode</h3>
+            <p>一键进入复制模式，选中文本并复制到系统剪贴板。</p>
+          </div>
+          <div class="feature">
+            <h3>会话管理</h3>
+            <p>自动保存历史、预览与删除，快速回溯关键对话。</p>
+          </div>
+          <div class="feature">
+            <h3>主题系统</h3>
+            <p>内置多种配色，夜间与浅色都舒适。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="quickstart" class="quickstart">
+        <h2>一分钟上手</h2>
+        <div class="code-card">
+          <pre><code>go install github.com/evallife/chat-tui/cmd/chat-tui@latest
+chat-tui</code></pre>
+        </div>
+        <div class="code-card">
+          <pre><code>git clone https://github.com/evallife/chat-tui.git
+cd chat-tui
+go build -o chat-tui ./cmd/chat-tui
+./chat-tui</code></pre>
+        </div>
+      </section>
+
+      <section id="shortcuts" class="shortcuts">
+        <h2>快捷键速查</h2>
+        <div class="chips">
+          <span>Ctrl+N 新建对话</span>
+          <span>Ctrl+H 历史记录</span>
+          <span>Ctrl+S 设置中心</span>
+          <span>Ctrl+E 导出对话</span>
+          <span>Ctrl+Shift+E 导出对话框</span>
+          <span>Ctrl+B 侧边栏</span>
+          <span>Ctrl+Y Copy Mode</span>
+          <span>Ctrl+C 退出确认 / 复制</span>
+          <span>Shift+Enter 换行</span>
+        </div>
+      </section>
+
+      <section id="themes" class="themes">
+        <h2>主题预设</h2>
+        <div class="theme-grid">
+          <div class="theme-card night">
+            <div class="swatch"></div>
+            <div class="label">Night</div>
+          </div>
+          <div class="theme-card nord">
+            <div class="swatch"></div>
+            <div class="label">Nord</div>
+          </div>
+          <div class="theme-card gruvbox">
+            <div class="swatch"></div>
+            <div class="label">Gruvbox</div>
+          </div>
+          <div class="theme-card solarized">
+            <div class="swatch"></div>
+            <div class="label">Solarized Dark</div>
+          </div>
+          <div class="theme-card light">
+            <div class="swatch"></div>
+            <div class="label">Light</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="footer-cta">
+        <div class="cta-card">
+          <div>
+            <h2>准备好在终端中聊天了吗？</h2>
+            <p>开箱即用，轻量快速，面向开发者的极简 AI TUI。</p>
+          </div>
+          <div class="cta-actions">
+            <a class="btn primary" href="https://github.com/evallife/chat-tui">查看仓库</a>
+            <a class="btn ghost" href="https://github.com/evallife/chat-tui/releases">下载发布版</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Powered by tview & glamour</span>
+      <span>© Chat‑TUI</span>
+    </footer>
+  </body>
+</html>
