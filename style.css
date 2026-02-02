@@ -59,6 +59,7 @@ a {
   position: absolute;
   filter: blur(30px);
   opacity: 0.6;
+  animation: drift 18s ease-in-out infinite;
 }
 
 .orb-a {
@@ -67,6 +68,7 @@ a {
   background: radial-gradient(circle, #1e88e5, transparent 60%);
   top: -120px;
   left: -120px;
+  animation-delay: -6s;
 }
 
 .orb-b {
@@ -75,6 +77,7 @@ a {
   background: radial-gradient(circle, #5ce0d8, transparent 60%);
   bottom: -200px;
   right: -150px;
+  animation-delay: -12s;
 }
 
 .grid {
@@ -296,6 +299,28 @@ pre {
   padding: 60px 0;
 }
 
+.screenshot {
+  padding: 60px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 24px;
+  align-items: center;
+}
+
+.shot-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px;
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
+}
+
+.shot-card img {
+  width: 100%;
+  border-radius: 12px;
+  display: block;
+}
+
 .theme-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -349,6 +374,49 @@ pre {
   color: var(--muted);
   font-size: 0.85rem;
   border-top: 1px solid var(--border);
+}
+
+.reveal {
+  animation: fadeUp 0.8s ease both;
+  animation-delay: var(--delay, 0s);
+}
+
+.float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.reveal.float {
+  animation: fadeUp 0.8s ease both, float 6s ease-in-out infinite;
+  animation-delay: var(--delay, 0s), 0s;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes drift {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(10px, -12px, 0) scale(1.04);
+  }
 }
 
 @media (max-width: 760px) {
