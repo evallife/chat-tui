@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/glamour"
 	"github.com/evallife/chat-tui/internal/api"
 	"github.com/evallife/chat-tui/internal/config"
@@ -25,6 +26,7 @@ type TViewUI struct {
 	HistoryList    *tview.List
 	HistoryPreview *tview.TextView
 	SettingsForm   *tview.Form
+	CopyView       *tview.TextArea
 
 	// Sidebar components
 	Sidebar  *tview.List
@@ -97,6 +99,14 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 
 	// Global key handlers
 	ui.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			if page, _ := ui.Pages.GetFrontPage(); page == "copy" {
+				ui.copySelectionToClipboard()
+				return nil
+			}
+			ui.confirmQuit()
+			return nil
+		}
 		switch event.Key() {
 		case tcell.KeyCtrlN:
 			ui.newConversation()
@@ -127,6 +137,9 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 				ui.Pages.AddPage("chat", ui.MainFlex, true, true)
 				ui.Pages.SwitchToPage("chat")
 			}
+			return nil
+		case tcell.KeyCtrlY:
+			ui.showCopyMode()
 			return nil
 		}
 		return event
@@ -203,6 +216,37 @@ func (ui *TViewUI) setupChatView() {
 	ui.InputField.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack))
 	ui.InputField.SetLabelStyle(tcell.StyleDefault.Foreground(tcell.ColorLightCyan).Background(tcell.ColorBlack))
 	ui.InputField.SetPlaceholderStyle(tcell.StyleDefault.Foreground(tcell.ColorGray).Background(tcell.ColorBlack))
+}
+
+func (ui *TViewUI) setupCopyView() {
+	ui.CopyView = tview.NewTextArea()
+	ui.CopyView.SetBorder(true).SetTitle(" Copy Mode (Ctrl+C: Copy, Esc: Back) ")
+	ui.CopyView.SetTitleColor(tcell.ColorLightSkyBlue)
+	ui.CopyView.SetWrap(true).SetWordWrap(true)
+	ui.CopyView.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack))
+	ui.CopyView.SetLabelStyle(tcell.StyleDefault.Foreground(tcell.ColorLightCyan).Background(tcell.ColorBlack))
+	ui.CopyView.SetClipboard(func(text string) {
+		_ = clipboard.WriteAll(text)
+	}, func() string {
+		text, _ := clipboard.ReadAll()
+		return text
+	})
+	ui.CopyView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			ui.hideCopyMode()
+			return nil
+		case tcell.KeyCtrlC:
+			ui.copySelectionToClipboard()
+			return nil
+		case tcell.KeyCtrlX, tcell.KeyBackspace, tcell.KeyDelete, tcell.KeyCtrlD, tcell.KeyCtrlH:
+			return nil
+		}
+		if event.Rune() != 0 {
+			return nil
+		}
+		return event
+	})
 }
 
 func (ui *TViewUI) handleInput(input string) {
@@ -590,6 +634,43 @@ func (ui *TViewUI) exportHistory() {
 	ui.exportToFile(filename)
 }
 
+func (ui *TViewUI) buildCopyText() string {
+	var sb strings.Builder
+	if ui.systemPrompt != "" {
+		sb.WriteString(fmt.Sprintf("System Prompt: %s\n\n", ui.systemPrompt))
+	}
+	for _, msg := range ui.messages {
+		sb.WriteString(fmt.Sprintf("%s:\n%s\n\n", strings.ToUpper(msg.Role), msg.Content))
+	}
+	return sb.String()
+}
+
+func (ui *TViewUI) copySelectionToClipboard() {
+	if ui.CopyView == nil {
+		return
+	}
+	text, _, _ := ui.CopyView.GetSelection()
+	if text == "" {
+		text = ui.CopyView.GetText()
+	}
+	_ = clipboard.WriteAll(text)
+}
+
+func (ui *TViewUI) showCopyMode() {
+	if ui.CopyView == nil {
+		ui.setupCopyView()
+		ui.Pages.AddPage("copy", ui.CopyView, true, true)
+	}
+	ui.CopyView.SetText(ui.buildCopyText(), true)
+	ui.Pages.SwitchToPage("copy")
+	ui.App.SetFocus(ui.CopyView)
+}
+
+func (ui *TViewUI) hideCopyMode() {
+	ui.Pages.SwitchToPage("chat")
+	ui.App.SetFocus(ui.InputField)
+}
+
 func (ui *TViewUI) makeButton(label string, action func()) *tview.Button {
 	btn := tview.NewButton(label)
 	btn.SetSelectedFunc(action)
@@ -606,6 +687,7 @@ func (ui *TViewUI) buildFooterBar() *tview.Flex {
 	bar.AddItem(ui.makeButton("New", ui.newConversation), 0, 1, false)
 	bar.AddItem(ui.makeButton("History", ui.showHistory), 0, 1, false)
 	bar.AddItem(ui.makeButton("Export", ui.exportHistory), 0, 1, false)
+	bar.AddItem(ui.makeButton("Copy", ui.showCopyMode), 0, 1, false)
 	bar.AddItem(ui.makeButton("Prompts", ui.showSystemPrompts), 0, 1, false)
 	bar.AddItem(ui.makeButton("Settings", ui.showSettings), 0, 1, false)
 	bar.AddItem(ui.makeButton("Quit", func() { ui.App.Stop() }), 0, 1, false)
@@ -693,6 +775,23 @@ func (ui *TViewUI) showExportDialog() {
 		AddItem(nil, 0, 1, false)
 
 	ui.Pages.AddPage("export-dialog", modal, true, true)
+}
+
+func (ui *TViewUI) confirmQuit() {
+	if page, _ := ui.Pages.GetFrontPage(); page == "confirm-quit" {
+		return
+	}
+	modal := tview.NewModal().
+		SetText("Quit the application?").
+		AddButtons([]string{"Quit", "Cancel"}).
+		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			ui.Pages.RemovePage("confirm-quit")
+			if buttonLabel == "Quit" {
+				ui.App.Stop()
+			}
+		})
+
+	ui.Pages.AddPage("confirm-quit", modal, true, true)
 }
 
 func (ui *TViewUI) Run() error {
