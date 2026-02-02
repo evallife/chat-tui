@@ -24,6 +24,7 @@ func main() {
 				BaseURL: "https://api.openai.com/v1",
 				Model:   "gpt-3.5-turbo",
 				APIKey:  "YOUR_API_KEY_HERE",
+				Theme:   "night",
 			}
 			config.SaveConfig(defaultCfg)
 			fmt.Printf("Created default config at: %s\n", config.GetConfigPath())

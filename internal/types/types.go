@@ -1,14 +1,15 @@
 package types
 
 import (
-	"time"
 	"github.com/sashabaranov/go-openai"
+	"time"
 )
 
 type Config struct {
 	BaseURL string `json:"base_url"`
 	APIKey  string `json:"api_key"`
 	Model   string `json:"model"`
+	Theme   string `json:"theme"`
 }
 
 type Conversation struct {

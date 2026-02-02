@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -53,7 +54,80 @@ type TViewUI struct {
 	draftInput   string
 }
 
+type Theme struct {
+	Name      string
+	Primary   tcell.Color
+	Secondary tcell.Color
+	Tertiary  tcell.Color
+	Border    tcell.Color
+	Title     tcell.Color
+	Accent    tcell.Color
+	InputBg   tcell.Color
+	InputFg   tcell.Color
+}
+
+var themes = map[string]Theme{
+	"night": {
+		Name:      "Night",
+		Primary:   tcell.ColorWhite,
+		Secondary: tcell.ColorGray,
+		Tertiary:  tcell.ColorLightGray,
+		Border:    tcell.ColorDarkSlateGray,
+		Title:     tcell.ColorLightSkyBlue,
+		Accent:    tcell.ColorYellow,
+		InputBg:   tcell.ColorBlack,
+		InputFg:   tcell.ColorWhite,
+	},
+	"nord": {
+		Name:      "Nord",
+		Primary:   tcell.NewRGBColor(216, 222, 233),
+		Secondary: tcell.NewRGBColor(129, 161, 193),
+		Tertiary:  tcell.NewRGBColor(136, 192, 208),
+		Border:    tcell.NewRGBColor(76, 86, 106),
+		Title:     tcell.NewRGBColor(94, 129, 172),
+		Accent:    tcell.NewRGBColor(163, 190, 140),
+		InputBg:   tcell.NewRGBColor(46, 52, 64),
+		InputFg:   tcell.NewRGBColor(216, 222, 233),
+	},
+	"gruvbox": {
+		Name:      "Gruvbox",
+		Primary:   tcell.NewRGBColor(235, 219, 178),
+		Secondary: tcell.NewRGBColor(168, 153, 132),
+		Tertiary:  tcell.NewRGBColor(189, 174, 147),
+		Border:    tcell.NewRGBColor(80, 73, 69),
+		Title:     tcell.NewRGBColor(215, 153, 33),
+		Accent:    tcell.NewRGBColor(184, 187, 38),
+		InputBg:   tcell.NewRGBColor(40, 40, 40),
+		InputFg:   tcell.NewRGBColor(235, 219, 178),
+	},
+	"solarized-dark": {
+		Name:      "Solarized Dark",
+		Primary:   tcell.NewRGBColor(147, 161, 161),
+		Secondary: tcell.NewRGBColor(133, 153, 0),
+		Tertiary:  tcell.NewRGBColor(42, 161, 152),
+		Border:    tcell.NewRGBColor(0, 43, 54),
+		Title:     tcell.NewRGBColor(38, 139, 210),
+		Accent:    tcell.NewRGBColor(203, 75, 22),
+		InputBg:   tcell.NewRGBColor(0, 43, 54),
+		InputFg:   tcell.NewRGBColor(131, 148, 150),
+	},
+	"light": {
+		Name:      "Light",
+		Primary:   tcell.ColorBlack,
+		Secondary: tcell.ColorDarkSlateGray,
+		Tertiary:  tcell.ColorGray,
+		Border:    tcell.ColorSilver,
+		Title:     tcell.ColorDarkCyan,
+		Accent:    tcell.ColorDarkGreen,
+		InputBg:   tcell.ColorWhite,
+		InputFg:   tcell.ColorBlack,
+	},
+}
+
 func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
+	if cfg.Theme == "" {
+		cfg.Theme = "night"
+	}
 	ui := &TViewUI{
 		App:            tview.NewApplication(),
 		Pages:          tview.NewPages(),
@@ -64,14 +138,7 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 		historyIndex:   -1,
 	}
 
-	// Theme / styling
-	tview.Styles.PrimitiveBackgroundColor = tcell.ColorBlack
-	tview.Styles.ContrastBackgroundColor = tcell.ColorDarkSlateGray
-	tview.Styles.BorderColor = tcell.ColorDarkSlateGray
-	tview.Styles.TitleColor = tcell.ColorLightSkyBlue
-	tview.Styles.PrimaryTextColor = tcell.ColorWhite
-	tview.Styles.SecondaryTextColor = tcell.ColorGray
-	tview.Styles.TertiaryTextColor = tcell.ColorLightGray
+	ui.applyTheme(cfg.Theme)
 
 	ui.renderer, _ = glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
@@ -157,7 +224,7 @@ func (ui *TViewUI) setupSidebar() {
 		AddItem("Quit", "Exit app", 'q', func() { ui.App.Stop() })
 
 	ui.Sidebar.SetBorder(true).SetTitle(" Menu ")
-	ui.Sidebar.SetTitleColor(tcell.ColorYellow)
+	ui.Sidebar.SetTitleColor(tview.Styles.TitleColor)
 }
 
 func (ui *TViewUI) setupChatView() {
@@ -169,7 +236,7 @@ func (ui *TViewUI) setupChatView() {
 			ui.App.Draw()
 		})
 	ui.ChatView.SetBorder(true).SetTitle(" Chat History ")
-	ui.ChatView.SetTitleColor(tcell.ColorLightSkyBlue)
+	ui.ChatView.SetTitleColor(tview.Styles.TitleColor)
 
 	ui.InputField = tview.NewTextArea().
 		SetLabel("> ").
@@ -212,19 +279,19 @@ func (ui *TViewUI) setupChatView() {
 		return event
 	})
 	ui.InputField.SetBorder(true).SetTitle(" Input (Enter to send, Shift+Enter for new line) ")
-	ui.InputField.SetTitleColor(tcell.ColorLightSkyBlue)
-	ui.InputField.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack))
-	ui.InputField.SetLabelStyle(tcell.StyleDefault.Foreground(tcell.ColorLightCyan).Background(tcell.ColorBlack))
-	ui.InputField.SetPlaceholderStyle(tcell.StyleDefault.Foreground(tcell.ColorGray).Background(tcell.ColorBlack))
+	ui.InputField.SetTitleColor(tview.Styles.TitleColor)
+	ui.InputField.SetTextStyle(tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor))
+	ui.InputField.SetLabelStyle(tcell.StyleDefault.Foreground(tview.Styles.SecondaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor))
+	ui.InputField.SetPlaceholderStyle(tcell.StyleDefault.Foreground(tview.Styles.TertiaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor))
 }
 
 func (ui *TViewUI) setupCopyView() {
 	ui.CopyView = tview.NewTextArea()
 	ui.CopyView.SetBorder(true).SetTitle(" Copy Mode (Ctrl+C: Copy, Esc: Back) ")
-	ui.CopyView.SetTitleColor(tcell.ColorLightSkyBlue)
+	ui.CopyView.SetTitleColor(tview.Styles.TitleColor)
 	ui.CopyView.SetWrap(true).SetWordWrap(true)
-	ui.CopyView.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack))
-	ui.CopyView.SetLabelStyle(tcell.StyleDefault.Foreground(tcell.ColorLightCyan).Background(tcell.ColorBlack))
+	ui.CopyView.SetTextStyle(tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor))
+	ui.CopyView.SetLabelStyle(tcell.StyleDefault.Foreground(tview.Styles.SecondaryTextColor).Background(tview.Styles.PrimitiveBackgroundColor))
 	ui.CopyView.SetClipboard(func(text string) {
 		_ = clipboard.WriteAll(text)
 	}, func() string {
@@ -601,15 +668,41 @@ func (ui *TViewUI) setupSettingsView() {
 	ui.SettingsForm = tview.NewForm().
 		AddInputField("API Key", ui.config.APIKey, 40, nil, nil).
 		AddInputField("Base URL", ui.config.BaseURL, 40, nil, nil).
-		AddInputField("Model", ui.config.Model, 40, nil, nil).
-		AddButton("Save", func() {
-			ui.config.APIKey = ui.SettingsForm.GetFormItem(0).(*tview.InputField).GetText()
-			ui.config.BaseURL = ui.SettingsForm.GetFormItem(1).(*tview.InputField).GetText()
-			ui.config.Model = ui.SettingsForm.GetFormItem(2).(*tview.InputField).GetText()
-			config.SaveConfig(ui.config)
-			ui.apiClient = api.NewClient(ui.config)
-			ui.Pages.SwitchToPage("chat")
-		}).
+		AddInputField("Model", ui.config.Model, 40, nil, nil)
+
+	themeKeys := make([]string, 0, len(themes))
+	for key := range themes {
+		themeKeys = append(themeKeys, key)
+	}
+	sort.Strings(themeKeys)
+
+	themeNames := make([]string, 0, len(themeKeys))
+	currentThemeIndex := 0
+	if ui.config.Theme == "" {
+		ui.config.Theme = "night"
+	}
+	for i, key := range themeKeys {
+		theme := themes[key]
+		themeNames = append(themeNames, theme.Name)
+		if key == ui.config.Theme {
+			currentThemeIndex = i
+		}
+	}
+	ui.SettingsForm.AddDropDown("Theme", themeNames, currentThemeIndex, nil)
+	ui.SettingsForm.AddButton("Save", func() {
+		ui.config.APIKey = ui.SettingsForm.GetFormItem(0).(*tview.InputField).GetText()
+		ui.config.BaseURL = ui.SettingsForm.GetFormItem(1).(*tview.InputField).GetText()
+		ui.config.Model = ui.SettingsForm.GetFormItem(2).(*tview.InputField).GetText()
+		themeIndex, _ := ui.SettingsForm.GetFormItem(3).(*tview.DropDown).GetCurrentOption()
+		if themeIndex >= 0 && themeIndex < len(themeKeys) {
+			ui.config.Theme = themeKeys[themeIndex]
+		}
+		config.SaveConfig(ui.config)
+		ui.apiClient = api.NewClient(ui.config)
+		ui.applyTheme(ui.config.Theme)
+		ui.Pages.SwitchToPage("chat")
+		ui.App.SetFocus(ui.InputField)
+	}).
 		AddButton("Cancel", func() {
 			ui.Pages.SwitchToPage("chat")
 		})
@@ -692,6 +785,47 @@ func (ui *TViewUI) buildFooterBar() *tview.Flex {
 	bar.AddItem(ui.makeButton("Settings", ui.showSettings), 0, 1, false)
 	bar.AddItem(ui.makeButton("Quit", func() { ui.App.Stop() }), 0, 1, false)
 	return bar
+}
+
+func (ui *TViewUI) applyTheme(themeKey string) {
+	theme, ok := themes[themeKey]
+	if !ok {
+		theme = themes["night"]
+	}
+	tview.Styles.PrimitiveBackgroundColor = theme.InputBg
+	tview.Styles.ContrastBackgroundColor = theme.Border
+	tview.Styles.BorderColor = theme.Border
+	tview.Styles.TitleColor = theme.Title
+	tview.Styles.PrimaryTextColor = theme.Primary
+	tview.Styles.SecondaryTextColor = theme.Secondary
+	tview.Styles.TertiaryTextColor = theme.Tertiary
+
+	if ui.Sidebar != nil {
+		ui.Sidebar.SetTitleColor(theme.Accent)
+	}
+	if ui.ChatView != nil {
+		ui.ChatView.SetTitleColor(theme.Title)
+	}
+	if ui.InputField != nil {
+		ui.InputField.SetTitleColor(theme.Title)
+		ui.InputField.SetTextStyle(tcell.StyleDefault.Foreground(theme.InputFg).Background(theme.InputBg))
+		ui.InputField.SetLabelStyle(tcell.StyleDefault.Foreground(theme.Secondary).Background(theme.InputBg))
+		ui.InputField.SetPlaceholderStyle(tcell.StyleDefault.Foreground(theme.Tertiary).Background(theme.InputBg))
+	}
+	if ui.CopyView != nil {
+		ui.CopyView.SetTitleColor(theme.Title)
+		ui.CopyView.SetTextStyle(tcell.StyleDefault.Foreground(theme.InputFg).Background(theme.InputBg))
+		ui.CopyView.SetLabelStyle(tcell.StyleDefault.Foreground(theme.Secondary).Background(theme.InputBg))
+	}
+	if ui.SettingsForm != nil {
+		ui.SettingsForm.SetTitleColor(theme.Title)
+	}
+	if ui.HistoryList != nil {
+		ui.HistoryList.SetTitleColor(theme.Title)
+	}
+	if ui.HistoryPreview != nil {
+		ui.HistoryPreview.SetTitleColor(theme.Title)
+	}
 }
 
 func (ui *TViewUI) buildHistoryBar() *tview.Flex {

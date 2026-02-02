@@ -2,9 +2,9 @@ package config
 
 import (
 	"encoding/json"
+	"github.com/evallife/chat-tui/internal/types"
 	"os"
 	"path/filepath"
-	"github.com/evallife/chat-tui/internal/types"
 )
 
 func GetConfigPath() string {
@@ -19,6 +19,7 @@ func LoadConfig() (types.Config, error) {
 		return types.Config{
 			BaseURL: "https://api.openai.com/v1",
 			Model:   "gpt-3.5-turbo",
+			Theme:   "night",
 		}, err
 	}
 	var cfg types.Config

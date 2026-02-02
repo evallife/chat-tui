@@ -15,6 +15,7 @@
 - 💬 **多行输入**：输入框支持多行编辑，`Shift+Enter` 换行，`Enter` 发送。
 - 📋 **安全粘贴**：支持括号粘贴（bracketed paste），多行粘贴不会被拆成多次发送。
 - 🧾 **复制模式**：一键进入 Copy Mode，支持选中文本并复制到系统剪贴板。
+- 🎨 **主题系统**：内置多种配色主题，可在 Settings 中一键切换（night / nord / gruvbox / solarized-dark / light）。
 - 📂 **会话管理**：
   - **历史回溯**：自动保存对话，支持随时加载历史记录。
   - **安全删除**：支持删除历史会话，内置二次确认防止误操作。
@@ -65,7 +66,8 @@ go build -o chat-tui ./cmd/chat-tui
 {
   "base_url": "https://api.openai.com/v1",
   "api_key": "sk-...",
-  "model": "gpt-4-turbo"
+  "model": "gpt-4-turbo",
+  "theme": "night"
 }
 ```
 
