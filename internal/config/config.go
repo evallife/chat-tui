@@ -2,9 +2,11 @@ package config
 
 import (
 	"encoding/json"
-	"github.com/evallife/chat-tui/internal/types"
+	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/evallife/chat-tui/internal/types"
 )
 
 func GetConfigPath() string {
@@ -23,15 +25,20 @@ func LoadConfig() (types.Config, error) {
 		}, err
 	}
 	var cfg types.Config
-	err = json.Unmarshal(file, &cfg)
-	return cfg, err
+	if err := json.Unmarshal(file, &cfg); err != nil {
+		return cfg, fmt.Errorf("parse config: %w", err)
+	}
+	return cfg, nil
 }
 
 func SaveConfig(cfg types.Config) error {
 	path := GetConfigPath()
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal config: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("write config to %s: %w", path, err)
+	}
+	return nil
 }

@@ -26,8 +26,10 @@ func main() {
 				APIKey:  "YOUR_API_KEY_HERE",
 				Theme:   "night",
 			}
-			config.SaveConfig(defaultCfg)
-			fmt.Printf("Created default config at: %s\n", config.GetConfigPath())
+		if err := config.SaveConfig(defaultCfg); err != nil {
+			fmt.Printf("Warning: could not save default config: %v\n", err)
+		}
+		fmt.Printf("Created default config at: %s\n", config.GetConfigPath())
 			os.Exit(0)
 		}
 	}

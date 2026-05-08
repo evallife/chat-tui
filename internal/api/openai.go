@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"fmt"
+
 	"github.com/sashabaranov/go-openai"
 	"github.com/evallife/chat-tui/internal/types"
 )
@@ -28,5 +30,9 @@ func (c *Client) StreamChat(ctx context.Context, messages []openai.ChatCompletio
 		Messages: messages,
 		Stream:   true,
 	}
-	return c.openaiClient.CreateChatCompletionStream(ctx, req)
+	stream, err := c.openaiClient.CreateChatCompletionStream(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("create stream (model=%s): %w", c.config.Model, err)
+	}
+	return stream, nil
 }

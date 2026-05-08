@@ -45,6 +45,10 @@ type TViewUI struct {
 	lastClickedIdx  int
 	lastClickedTime time.Time
 
+	// Streaming state
+	isStreaming   bool
+	streamCancel  context.CancelFunc
+
 	// Input processing state
 	isProcessingInput bool
 
@@ -207,6 +211,17 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 			return nil
 		case tcell.KeyCtrlY:
 			ui.showCopyMode()
+			return nil
+		case tcell.KeyEsc:
+			if page, _ := ui.Pages.GetFrontPage(); page == "copy" {
+				ui.hideCopyMode()
+				return nil
+			}
+			if ui.isStreaming && ui.streamCancel != nil {
+				ui.streamCancel()
+				return nil
+			}
+			ui.confirmQuit()
 			return nil
 		}
 		return event
@@ -433,7 +448,20 @@ func (ui *TViewUI) handleCommand(input string) {
 		ui.exportToFile(filename)
 
 	case "/help":
-		ui.appendSystemMsg("Commands:\n/read <path> - Import file\n/clear - Clear screen\n/config - Show current config\n/save [path] - Save to file\n/export [path] - Export Q&A to file\n/help - Show this help")
+		ui.appendSystemMsg(`Commands:
+  /read <path>   Import file content
+  /clear         Clear chat display
+  /config        Show current config
+  /save [path]   Save chat to file
+  /export [path] Export Q&A as Markdown
+  /help          Show this help
+
+Shortcuts:
+  Ctrl+N  New chat       Ctrl+H  History
+  Ctrl+S  Settings       Ctrl+E  Export
+  Ctrl+B  Toggle sidebar Ctrl+Y  Copy mode
+  Esc     Cancel stream / Quit
+  Up/Down Input history`)
 
 	default:
 		ui.appendSystemMsg(fmt.Sprintf("Unknown command: %s. Type /help for list.", cmd))
@@ -463,7 +491,14 @@ func (ui *TViewUI) exportToFile(filename string) {
 }
 
 func (ui *TViewUI) streamOpenAIResponse() {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	ui.isStreaming = true
+	ui.streamCancel = cancel
+	defer func() {
+		cancel()
+		ui.isStreaming = false
+		ui.streamCancel = nil
+	}()
 	var sendMsgs []openai.ChatCompletionMessage
 	if ui.systemPrompt != "" {
 		sendMsgs = append(sendMsgs, openai.ChatCompletionMessage{
@@ -490,6 +525,11 @@ func (ui *TViewUI) streamOpenAIResponse() {
 	for {
 		response, err := stream.Recv()
 		if err != nil {
+			if ctx.Err() != nil {
+				ui.App.QueueUpdateDraw(func() {
+					ui.appendSystemMsg("[Stream cancelled]")
+				})
+			}
 			break
 		}
 		content := response.Choices[0].Delta.Content
@@ -502,11 +542,13 @@ func (ui *TViewUI) streamOpenAIResponse() {
 	}
 
 	ui.App.QueueUpdateDraw(func() {
-		ui.messages = append(ui.messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: fullResponse.String(),
-		})
-		ui.storage.SaveMessage(ui.convID, openai.ChatMessageRoleAssistant, fullResponse.String())
+		if fullResponse.Len() > 0 {
+			ui.messages = append(ui.messages, openai.ChatCompletionMessage{
+				Role:    openai.ChatMessageRoleAssistant,
+				Content: fullResponse.String(),
+			})
+			ui.storage.SaveMessage(ui.convID, openai.ChatMessageRoleAssistant, fullResponse.String())
+		}
 		ui.refreshChat()
 	})
 }
