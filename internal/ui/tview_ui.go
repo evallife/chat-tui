@@ -56,6 +56,13 @@ type TViewUI struct {
 	inputHistory []string
 	historyIndex int
 	draftInput   string
+
+	// Search state
+	searchInput  *tview.InputField
+	searchActive bool
+	searchQuery  string
+	searchHits   []string
+	searchIdx    int
 }
 
 type Theme struct {
@@ -153,6 +160,7 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 	ui.setupChatView()
 	ui.setupHistoryView()
 	ui.setupSettingsView()
+	ui.setupSearch()
 
 	// Layout main chat with sidebar
 	footer := ui.buildFooterBar()
@@ -211,6 +219,9 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 			return nil
 		case tcell.KeyCtrlY:
 			ui.showCopyMode()
+			return nil
+		case tcell.KeyCtrlF:
+			ui.toggleSearch()
 			return nil
 		case tcell.KeyEsc:
 			if page, _ := ui.Pages.GetFrontPage(); page == "copy" {
@@ -329,6 +340,154 @@ func (ui *TViewUI) setupCopyView() {
 		}
 		return event
 	})
+}
+
+func (ui *TViewUI) setupSearch() {
+	ui.searchInput = tview.NewInputField().
+		SetLabel("Search: ").
+		SetFieldWidth(40)
+	ui.searchInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEnter:
+			if event.Modifiers()&tcell.ModShift != 0 {
+				ui.searchPrev()
+			} else if len(ui.searchHits) > 0 {
+				ui.searchNext()
+			} else {
+				ui.searchQuery = ui.searchInput.GetText()
+				ui.performSearch()
+			}
+			return nil
+		case tcell.KeyEsc:
+			ui.clearSearch()
+			return nil
+		}
+		return event
+	})
+}
+
+func (ui *TViewUI) toggleSearch() {
+	if ui.searchActive {
+		ui.clearSearch()
+		return
+	}
+	ui.searchActive = true
+	ui.searchInput.SetText("")
+
+	searchFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(ui.searchInput, 1, 0, true).
+		AddItem(ui.ChatView, 0, 1, false).
+		AddItem(ui.InputField, 3, 1, false)
+	searchFlex.SetBorder(true).SetTitle(" Chat History ")
+
+	ui.MainFlex = tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(ui.Sidebar, 20, 1, false).
+		AddItem(searchFlex, 0, 4, true)
+	ui.Pages.AddPage("chat", ui.MainFlex, true, true)
+	ui.Pages.SwitchToPage("chat")
+	ui.App.SetFocus(ui.searchInput)
+}
+
+func (ui *TViewUI) performSearch() {
+	query := strings.ToLower(ui.searchQuery)
+	if query == "" {
+		ui.clearSearch()
+		return
+	}
+
+	// Search through messages
+	ui.searchHits = []string{}
+	matchIdx := 0
+	var buf strings.Builder
+
+	if ui.systemPrompt != "" {
+		fmt.Fprintf(&buf, "[gray][i]System Prompt: %s[-][/i]\n\n", ui.systemPrompt)
+	}
+
+	for mi, m := range ui.messages {
+		roleColor := "purple"
+		if m.Role == openai.ChatMessageRoleAssistant {
+			roleColor = "green"
+		}
+		fmt.Fprintf(&buf, "[%s][b]%s[-][/b]\n", roleColor, strings.ToUpper(m.Role))
+
+		content := m.Content
+		lower := strings.ToLower(content)
+		start := 0
+		for {
+			idx := strings.Index(lower[start:], query)
+			if idx < 0 {
+				break
+			}
+			absIdx := start + idx
+			regionID := fmt.Sprintf("hit_%d", matchIdx)
+			ui.searchHits = append(ui.searchHits, regionID)
+			matchIdx++
+
+			buf.WriteString(content[:absIdx])
+			fmt.Fprintf(&buf, `["%s"][::b]%s[""]`, regionID, content[absIdx:absIdx+len(query)])
+			start = absIdx + len(query)
+		}
+		buf.WriteString(content[start:])
+		buf.WriteString("\n\n")
+		_ = mi
+	}
+
+	if len(ui.searchHits) == 0 {
+		ui.appendSystemMsg(fmt.Sprintf("No matches for: %s", ui.searchQuery))
+		ui.clearSearch()
+		return
+	}
+
+	ui.searchIdx = 0
+	ui.ChatView.Clear()
+	fmt.Fprint(ui.ChatView, buf.String())
+	ui.ChatView.Highlight(ui.searchHits[ui.searchIdx])
+	ui.ChatView.ScrollToHighlight()
+	ui.ChatView.SetTitle(fmt.Sprintf(" Chat History (%d matches) ", len(ui.searchHits)))
+	ui.App.SetFocus(ui.searchInput)
+}
+
+func (ui *TViewUI) clearSearch() {
+	ui.searchActive = false
+	ui.searchQuery = ""
+	ui.searchHits = nil
+	ui.searchIdx = 0
+
+	footer := ui.buildFooterBar()
+	chatFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(ui.ChatView, 0, 1, false).
+		AddItem(ui.InputField, 3, 1, true).
+		AddItem(footer, 3, 1, false)
+	ui.MainFlex = tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(ui.Sidebar, 20, 1, false).
+		AddItem(chatFlex, 0, 4, true)
+	ui.Pages.AddPage("chat", ui.MainFlex, true, true)
+	ui.Pages.SwitchToPage("chat")
+
+	ui.ChatView.SetTitle(" Chat History ")
+	ui.refreshChat()
+	ui.App.SetFocus(ui.InputField)
+}
+
+func (ui *TViewUI) searchNext() {
+	if len(ui.searchHits) == 0 {
+		return
+	}
+	ui.searchIdx = (ui.searchIdx + 1) % len(ui.searchHits)
+	ui.ChatView.Highlight(ui.searchHits[ui.searchIdx])
+	ui.ChatView.ScrollToHighlight()
+	ui.ChatView.SetTitle(fmt.Sprintf(" Chat History (%d/%d) ", ui.searchIdx+1, len(ui.searchHits)))
+}
+
+func (ui *TViewUI) searchPrev() {
+	if len(ui.searchHits) == 0 {
+		return
+	}
+	ui.searchIdx = (ui.searchIdx - 1 + len(ui.searchHits)) % len(ui.searchHits)
+	ui.ChatView.Highlight(ui.searchHits[ui.searchIdx])
+	ui.ChatView.ScrollToHighlight()
+	ui.ChatView.SetTitle(fmt.Sprintf(" Chat History (%d/%d) ", ui.searchIdx+1, len(ui.searchHits)))
 }
 
 func (ui *TViewUI) handleInput(input string) {
@@ -460,7 +619,7 @@ Shortcuts:
   Ctrl+N  New chat       Ctrl+H  History
   Ctrl+S  Settings       Ctrl+E  Export
   Ctrl+B  Toggle sidebar Ctrl+Y  Copy mode
-  Esc     Cancel stream / Quit
+  Ctrl+F  Search         Esc Cancel/Quit
   Up/Down Input history`)
 
 	default:
@@ -690,20 +849,127 @@ func (ui *TViewUI) showHistory() {
 }
 
 func (ui *TViewUI) showSystemPrompts() {
-	prompts, _ := ui.storage.ListSystemPrompts()
+	prompts, err := ui.storage.ListSystemPrompts()
+	if err != nil {
+		ui.appendSystemMsg(fmt.Sprintf("Error loading prompts: %v", err))
+		return
+	}
+
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+
+	// Prompt list
 	list := tview.NewList()
+	list.SetBorder(true).SetTitle(" System Prompts (Enter=Use, e=Edit, d=Delete, n=New) ")
 	for _, p := range prompts {
 		pCopy := p
-		list.AddItem(p.Name, p.Content, 0, func() {
+		preview := p.Content
+		if len(preview) > 60 {
+			preview = preview[:57] + "..."
+		}
+		if preview == "" {
+			preview = "(no prompt)"
+		}
+		list.AddItem(p.Name, preview, 0, func() {
 			ui.systemPrompt = pCopy.Content
 			ui.appendSystemMsg(fmt.Sprintf("System prompt set to: %s", pCopy.Name))
+			ui.Pages.RemovePage("system_prompts_mgr")
 			ui.Pages.SwitchToPage("chat")
 		})
 	}
-	list.AddItem("Cancel", "", 'c', func() { ui.Pages.SwitchToPage("chat") })
-	list.SetBorder(true).SetTitle(" Select System Prompt ")
-	ui.Pages.AddPage("system_prompts", list, true, true)
-	ui.Pages.SwitchToPage("system_prompts")
+
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Rune() {
+		case 'n':
+			ui.showPromptEditor(types.SystemPrompt{})
+			return nil
+		case 'e':
+			idx := list.GetCurrentItem()
+			if idx >= 0 && idx < len(prompts) {
+				ui.showPromptEditor(prompts[idx])
+			}
+			return nil
+		case 'd':
+			idx := list.GetCurrentItem()
+			if idx >= 0 && idx < len(prompts) {
+				ui.confirmDeletePrompt(prompts[idx], list)
+			}
+			return nil
+		}
+		switch event.Key() {
+		case tcell.KeyEsc:
+			ui.Pages.RemovePage("system_prompts_mgr")
+			ui.Pages.SwitchToPage("chat")
+			return nil
+		}
+		return event
+	})
+
+	// Help bar
+	help := tview.NewTextView().SetDynamicColors(true)
+	fmt.Fprintln(help, "[::b]n[::-] New  [::b]e[::-] Edit  [::b]d[::-] Delete  [::b]Enter[::-] Use  [::b]Esc[::-] Back")
+
+	flex.AddItem(list, 0, 1, true)
+	flex.AddItem(help, 1, 0, false)
+
+	ui.Pages.AddPage("system_prompts_mgr", flex, true, true)
+	ui.Pages.SwitchToPage("system_prompts_mgr")
+}
+
+func (ui *TViewUI) showPromptEditor(p types.SystemPrompt) {
+	isNew := p.ID == ""
+	title := " Edit Prompt "
+	if isNew {
+		title = " New Prompt "
+	}
+
+	form := tview.NewForm().
+		AddInputField("Name", p.Name, 40, nil, nil).
+		AddTextArea("Content", p.Content, 60, 6, 0, nil)
+
+	form.AddButton("Save", func() {
+		name := form.GetFormItem(0).(*tview.InputField).GetText()
+		content := form.GetFormItem(1).(*tview.TextArea).GetText()
+		if name == "" {
+			return
+		}
+		prompt := types.SystemPrompt{
+			ID:      p.ID,
+			Name:    name,
+			Content: content,
+		}
+		if err := ui.storage.SaveSystemPrompt(prompt); err != nil {
+			ui.appendSystemMsg(fmt.Sprintf("Error saving prompt: %v", err))
+		}
+		ui.Pages.RemovePage("prompt_editor")
+		ui.showSystemPrompts()
+	}).
+		AddButton("Cancel", func() {
+			ui.Pages.RemovePage("prompt_editor")
+			ui.showSystemPrompts()
+		})
+
+	form.SetBorder(true).SetTitle(title)
+	ui.Pages.AddPage("prompt_editor", form, true, true)
+	ui.Pages.SwitchToPage("prompt_editor")
+}
+
+func (ui *TViewUI) confirmDeletePrompt(p types.SystemPrompt, parentList *tview.List) {
+	modal := tview.NewModal().
+		SetText(fmt.Sprintf("Delete prompt \"%s\"?", p.Name)).
+		AddButtons([]string{"Delete", "Cancel"}).
+		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			if buttonLabel == "Delete" {
+				if err := ui.storage.DeleteSystemPrompt(p.ID); err != nil {
+					ui.appendSystemMsg(fmt.Sprintf("Error deleting prompt: %v", err))
+				}
+				ui.Pages.RemovePage("confirm_delete_prompt")
+				ui.showSystemPrompts()
+			} else {
+				ui.Pages.RemovePage("confirm_delete_prompt")
+			}
+		})
+	ui.Pages.AddPage("confirm_delete_prompt", modal, true, true)
+	ui.Pages.SwitchToPage("confirm_delete_prompt")
 }
 
 func (ui *TViewUI) setupSettingsView() {

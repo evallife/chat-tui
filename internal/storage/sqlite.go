@@ -154,6 +154,24 @@ func (m *Manager) ListSystemPrompts() ([]types.SystemPrompt, error) {
 	return prompts, nil
 }
 
+func (m *Manager) SaveSystemPrompt(p types.SystemPrompt) error {
+	if p.ID == "" {
+		p.ID = uuid.New().String()
+	}
+	_, err := m.db.Exec("INSERT OR REPLACE INTO system_prompts (id, name, content) VALUES (?, ?, ?)", p.ID, p.Name, p.Content)
+	if err != nil {
+		return fmt.Errorf("save system prompt: %w", err)
+	}
+	return nil
+}
+
+func (m *Manager) DeleteSystemPrompt(id string) error {
+	_, err := m.db.Exec("DELETE FROM system_prompts WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete system prompt %s: %w", id, err)
+	}
+	return nil
+}
 
 func (m *Manager) DeleteConversation(convID string) error {
 	tx, err := m.db.Begin()
