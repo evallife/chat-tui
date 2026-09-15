@@ -82,7 +82,7 @@
           </div>
           <div class="feature-card">
             <h3>Eino Agent 流</h3>
-            <p>ChatModelAgent + Runner 消费 AgentEvent：助手增量、tool-call / 多步状态、Esc 取消。</p>
+            <p>ChatModelAgent + Runner 消费 AgentEvent：助手增量、内置工具（读文件/HTTP/命令等）、Esc 取消。</p>
           </div>
           <div class="feature-card">
             <h3>流式输出</h3>
@@ -136,7 +136,8 @@
             <div class="tui-chat">
               <div class="tui-msg"><span class="user">USER</span> 用 Agent 总结这段 panic，并给出修复步骤。</div>
               <div class="tui-status">AGENT · streaming · ChatModelAgent + Runner</div>
-              <div class="tui-tool">[tool] 未启用 · Esc / Stop 可取消</div>
+              <div class="tui-tool">⚙ tool:read_file · path=./main.go</div>
+              <div class="tui-tool">⚙ tool:read_file ✓ · truncated snippet…</div>
               <div class="tui-msg"><span class="assistant">ASSISTANT</span> 根因在 <code>bar()</code> 空指针。先加 nil guard，再补回归测试。</div>
             </div>
             <div class="tui-input">&gt; Type a message (Shift+Enter 换行)…</div>
