@@ -117,11 +117,36 @@
 
       <section class="section shot-grid">
         <div>
-          <h2>真实界面，一目了然</h2>
-          <p class="sub">来自项目内置截图，展示侧边栏、聊天区与操作栏的整体布局。</p>
+          <h2>界面布局，一目了然</h2>
+          <p class="sub">侧边栏会话、Agent 流式区与底部操作栏 —— 用 HTML 复刻的终端示意，无需截图。</p>
         </div>
-        <div class="shot-frame">
-          <img src="image/screenshot.png" alt="Chat-TUI 截图" width="1200" height="800" loading="lazy" />
+        <div class="tui-mock" aria-label="Chat-TUI 界面示意">
+          <aside class="tui-side">
+            <div class="tui-side-title">Sessions</div>
+            <button class="tui-item active">Ark · panic 排查</button>
+            <button class="tui-item">Ollama · 本地问答</button>
+            <button class="tui-item">Claude · 代码审查</button>
+            <div class="tui-side-foot">Ctrl+N 新建</div>
+          </aside>
+          <div class="tui-main">
+            <div class="tui-top">
+              <span>chat-tui</span>
+              <span class="tui-pill">provider: ark · doubao-pro</span>
+            </div>
+            <div class="tui-chat">
+              <div class="tui-msg"><span class="user">USER</span> 用 Agent 总结这段 panic，并给出修复步骤。</div>
+              <div class="tui-status">AGENT · streaming · ChatModelAgent + Runner</div>
+              <div class="tui-tool">[tool] 未启用 · Esc / Stop 可取消</div>
+              <div class="tui-msg"><span class="assistant">ASSISTANT</span> 根因在 <code>bar()</code> 空指针。先加 nil guard，再补回归测试。</div>
+            </div>
+            <div class="tui-input">&gt; Type a message (Shift+Enter 换行)…</div>
+            <div class="tui-bar">
+              <span>Settings</span>
+              <span>History</span>
+              <span>Export</span>
+              <span class="accent">Stop</span>
+            </div>
+          </div>
         </div>
       </section>
 
