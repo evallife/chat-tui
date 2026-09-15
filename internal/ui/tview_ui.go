@@ -607,21 +607,29 @@ func (ui *TViewUI) handleCommand(input string) {
 		}
 		ui.exportToFile(filename)
 
+	case "/tools":
+		ui.appendSystemMsg(`Built-in Eino agent tools:
+  get_current_time       Local date/time
+  get_working_directory  Process cwd
+  list_directory         List a folder
+  read_file              Read a text file (capped)
+  write_file             Write/append a text file
+  http_get               HTTP GET a URL (capped)
+  run_command            Short shell command (timeout)
+
+The model may call these during a reply; results show as ⚙ tool:… in the chat.
+`)
 	case "/help":
 		ui.appendSystemMsg(`Commands:
-  /read <path>   Import file content
-  /clear         Clear chat display
-  /config        Show current config
-  /save [path]   Save chat to file
-  /export [path] Export Q&A as Markdown
+  /read <path>   Inject file content into chat
+  /tools         List built-in Eino agent tools
+  /clear         Clear chat display (history kept)
+  /config        Show current settings
   /help          Show this help
 
-Shortcuts:
-  Ctrl+N  New chat       Ctrl+H  History
-  Ctrl+S  Settings       Ctrl+E  Export
-  Ctrl+B  Toggle sidebar Ctrl+Y  Copy mode
-  Ctrl+F  Search         Esc Cancel stream / Quit
-  Up/Down Input history`)
+While streaming: Esc or Stop cancels the agent.
+Tool calls appear inline as ⚙ tool:<name>.
+`)
 
 	default:
 		ui.appendSystemMsg(fmt.Sprintf("Unknown command: %s. Type /help for list.", cmd))
@@ -688,14 +696,30 @@ func (ui *TViewUI) streamAgentResponse() {
 			case api.EventReasoning:
 				fmt.Fprintf(ui.ChatView, "[gray]%s[-]", text)
 			case api.EventToolCall:
-				fmt.Fprintf(ui.ChatView, "\n[yellow][tool: %s] calling...[-]\n", tool)
+				args := strings.TrimSpace(text)
+				if len(args) > 180 {
+					args = args[:180] + "…"
+				}
+				if args != "" {
+					fmt.Fprintf(ui.ChatView, "\n[yellow]⚙ tool:%s[-] [gray]%s[-]\n", tool, args)
+				} else {
+					fmt.Fprintf(ui.ChatView, "\n[yellow]⚙ tool:%s calling…[-]\n", tool)
+				}
 				ui.ChatView.SetTitle(fmt.Sprintf(" Chat History · tool:%s ", tool))
 			case api.EventToolResult:
 				name := tool
 				if name == "" {
 					name = "tool"
 				}
-				fmt.Fprintf(ui.ChatView, "\n[yellow][tool: %s] done[-]\n", name)
+				body := strings.TrimSpace(text)
+				if len(body) > 600 {
+					body = body[:600] + "\n…(truncated)"
+				}
+				if body == "" {
+					fmt.Fprintf(ui.ChatView, "[yellow]⚙ tool:%s ✓[-]\n", name)
+				} else {
+					fmt.Fprintf(ui.ChatView, "[yellow]⚙ tool:%s ✓[-]\n[gray]%s[-]\n", name, body)
+				}
 			case api.EventStatus:
 				if status != "" {
 					ui.ChatView.SetTitle(fmt.Sprintf(" Chat History · %s ", status))
