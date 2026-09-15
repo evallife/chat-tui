@@ -1080,7 +1080,7 @@ func (ui *TViewUI) rebuildSettingsForm() {
 	ui.SettingsForm = form
 
 	hint := tview.NewTextView().SetDynamicColors(true)
-	fmt.Fprint(hint, "[gray]Providers: openai · ark · ollama · claude · gemini · qwen · deepseek  |  empty Base URL uses the provider default  |  tools: internal/api/tools.go[-]")
+	fmt.Fprint(hint, "[gray]Providers: openai · ark · ollama · claude · gemini · qwen · deepseek  |  empty Base URL uses the provider default  |  tools: time/cwd/list/read/write/http_get/run_command[-]")
 
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(hint, 1, 0, false).
