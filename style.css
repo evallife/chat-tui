@@ -85,6 +85,19 @@ pre {
   font-size: 0.85rem;
 }
 
+.status-line {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7dd3c7;
+}
+
+.tool-line {
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  color: #e6c07b;
+}
+
 .theme-card {
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.03);
