@@ -1,25 +1,28 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-05-08T06:09:08Z
-**Commit:** 863b481
-**Branch:** main
+**Updated:** 2026-09-15
+**Branch:** feat/eino-agent
 
 ## OVERVIEW
 
-Terminal chat client for OpenAI-compatible APIs. Go 1.25+, two TUI frameworks (Bubble Tea + tview), SQLite storage.
+Terminal **Eino ADK agent** chat client. Go 1.25+, tview TUI, SQLite storage. Completions run through CloudWeGo Eino `ChatModelAgent` + `Runner` + `AgentEvent` streaming. Multiple official `eino-ext` ChatModel providers (OpenAI-compatible, Ark, Ollama, Claude, Gemini, Qwen, DeepSeek).
 
 ## STRUCTURE
 
 ```
 chat-tui/
-├── cmd/chat-tui/main.go    # Entry point: config → storage → UI
+├── cmd/chat-tui/main.go     # Entry point: config → storage → UI
 ├── internal/
-│   ├── api/openai.go        # Streaming chat client (go-openai)
+│   ├── api/
+│   │   ├── agent.go         # ChatModelAgent + Runner + AgentEvent stream
+│   │   ├── provider.go      # Multi-provider ChatModel factory
+│   │   ├── convert.go       # go-openai messages ↔ eino schema.Message
+│   │   └── tools.go         # ReAct tool extension point (empty by default)
 │   ├── config/config.go     # JSON config: ~/.xftui.json
 │   ├── storage/sqlite.go    # Pure-Go SQLite: ~/.xftui.db
-│   ├── types/types.go       # Shared structs (Config, Conversation, SystemPrompt)
+│   ├── types/types.go       # Config (provider + credentials), Conversation, SystemPrompt
 │   └── ui/
-│       └── tview_ui.go      # tview UI (active, ~960 lines)
+│       └── tview_ui.go      # tview UI: settings, AgentEvent consumer, cancel
 ├── go.mod
 ├── .github/workflows/release.yml  # Cross-platform release (v* tags)
 └── todo.md                  # Feature backlog
@@ -29,34 +32,42 @@ chat-tui/
 
 | Task | Location | Notes |
 |------|----------|-------|
-| API integration | `internal/api/openai.go` | Streaming only, 32 lines |
-| Config schema | `internal/types/types.go` | Config, Conversation, SystemPrompt |
+| Agent pipeline | `internal/api/agent.go` | `NewChatModelAgent` + `Runner{EnableStreaming:true}` |
+| Provider factory | `internal/api/provider.go` | openai / ark / ollama / claude / gemini / qwen / deepseek |
+| Message conversion | `internal/api/convert.go` | UI/SQLite keep go-openai types |
+| Tools (future) | `internal/api/tools.go` | `extraTools()` → `ToolsConfig` |
+| Config schema | `internal/types/types.go` | `provider`, `region`, `access_key`, `secret_key` |
 | Storage operations | `internal/storage/sqlite.go` | CRUD + migrations |
-| UI logic | `internal/ui/tview_ui.go` | All rendering, keybinds, streaming, commands |
+| UI logic | `internal/ui/tview_ui.go` | Settings, stream consumer, Stop/Esc cancel |
 | Themes | `internal/ui/tview_ui.go` | `themes` map: night/nord/gruvbox/solarized-dark/light |
 
 ## CONVENTIONS
 
-- **No tests exist** — add when touching storage or config
 - **Config path hardcoded**: `~/.xftui.json`, `~/.xftui.db`
-- **go-openai types used everywhere** — `openai.ChatCompletionMessage` is the message type, imported in types, storage, api, ui
+- **Missing `provider` defaults to `openai`** — existing `base_url` / `api_key` / `model` still work
+- **go-openai types in SQLite/UI** — convert at the `internal/api` boundary
 - **UUID for IDs** — conversations and system prompts use `google/uuid`
 - **Inline migrations** — `ALTER TABLE ADD COLUMN IF NOT EXISTS` pattern in `NewManager()`
+- **Add tests** when touching storage, config, or api conversion/factory
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
-- **No error wrapping** — errors returned bare, no `fmt.Errorf("...: %w", err)`
-- **Ignored errors** — `config.SaveConfig()` error ignored in main.go line 29
+- **Ignored errors** — some `config.SaveConfig()` / storage writes still logged only in UI
 - **Hardcoded defaults** — API key placeholder `"YOUR_API_KEY_HERE"` in main.go
+- **Do not commit `main.exe` or other local binaries**
 
 ## COMMANDS
 
 ```bash
 go build -o chat-tui ./cmd/chat-tui    # Build binary
+go build ./...                         # All packages
+go test ./internal/config ./internal/api
 go install github.com/evallife/chat-tui/cmd/chat-tui@latest  # Install globally
 ```
 
 ## NOTES
 
 - Release workflow triggers on `v*` tags, builds for linux/windows/darwin (amd64)
-- System prompt stored per-conversation but no UI to edit it yet (see `todo.md`)
+- System prompts have a manager UI (list / new / edit / delete / apply)
+- ChatModelAgent starts with empty tools; append `tool.BaseTool` in `extraTools()` for ReAct tool calling
+- GitHub Pages marketing site lives on the `gh-pages` branch (not this tree)
