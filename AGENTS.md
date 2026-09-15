@@ -17,7 +17,7 @@ chat-tui/
 │   │   ├── agent.go         # ChatModelAgent + Runner + AgentEvent stream
 │   │   ├── provider.go      # Multi-provider ChatModel factory
 │   │   ├── convert.go       # go-openai messages ↔ eino schema.Message
-│   │   └── tools.go         # ReAct tool extension point (empty by default)
+│   │   └── tools.go         # Common tools: time/cwd/list/read/write/http_get/run_command
 │   ├── config/config.go     # JSON config: ~/.xftui.json
 │   ├── storage/sqlite.go    # Pure-Go SQLite: ~/.xftui.db
 │   ├── types/types.go       # Config (provider + credentials), Conversation, SystemPrompt
@@ -35,7 +35,7 @@ chat-tui/
 | Agent pipeline | `internal/api/agent.go` | `NewChatModelAgent` + `Runner{EnableStreaming:true}` |
 | Provider factory | `internal/api/provider.go` | openai / ark / ollama / claude / gemini / qwen / deepseek |
 | Message conversion | `internal/api/convert.go` | UI/SQLite keep go-openai types |
-| Tools (future) | `internal/api/tools.go` | `extraTools()` → `ToolsConfig` |
+| Tools | `internal/api/tools.go` | `extraTools()` → time/cwd/fs/http/shell |
 | Config schema | `internal/types/types.go` | `provider`, `region`, `access_key`, `secret_key` |
 | Storage operations | `internal/storage/sqlite.go` | CRUD + migrations |
 | UI logic | `internal/ui/tview_ui.go` | Settings, stream consumer, Stop/Esc cancel |
@@ -69,5 +69,5 @@ go install github.com/evallife/chat-tui/cmd/chat-tui@latest  # Install globally
 
 - Release workflow triggers on `v*` tags, builds for linux/windows/darwin (amd64)
 - System prompts have a manager UI (list / new / edit / delete / apply)
-- ChatModelAgent starts with empty tools; append `tool.BaseTool` in `extraTools()` for ReAct tool calling
+- ChatModelAgent ships with common tools in `extraTools()` (time, cwd, list/read/write file, http_get, run_command); append more `tool.BaseTool` there as needed
 - GitHub Pages marketing site lives on the `gh-pages` branch (not this tree)

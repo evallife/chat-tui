@@ -11,7 +11,7 @@
 ## ✨ 功能特性
 
 - 🔌 **多提供商**：通过 Eino 官方 `eino-ext` ChatModel 接入 OpenAI 兼容接口、Ark（火山引擎）、Ollama、Claude（Anthropic）、Gemini（Google）、Qwen（DashScope）、DeepSeek。
-- 🧠 **Eino Agent**：补全走 `ChatModelAgent` + `Runner`（`EnableStreaming: true`），消费 `AgentEvent` 流；ReAct 工具位已预留（`internal/api/tools.go`）。
+- 🧠 **Eino Agent**：补全走 `ChatModelAgent` + `Runner`（`EnableStreaming: true`），消费 `AgentEvent` 流；内置通用工具（`get_current_time` / `get_working_directory` / `list_directory` / `read_file` / `write_file` / `http_get` / `run_command`，见 `internal/api/tools.go`）。
 - 🌊 **流式交互**：助手文本增量渲染；出现 tool-call / 多步状态时在聊天区提示。`Esc` 或底部 **Stop** 取消进行中的 run。
 - 💬 **多行输入**：输入框支持多行编辑，`Shift+Enter` 换行，`Enter` 发送。
 - 📋 **安全粘贴**：支持括号粘贴（bracketed paste），多行粘贴不会被拆成多次发送。
@@ -108,7 +108,7 @@ TUI (tview)  ──messages (go-openai types in SQLite)──►  api.Client
                                                           (text deltas / tool status)
 ```
 
-存储与 UI 仍使用 `openai.ChatCompletionMessage`；在 `internal/api` 边界转换成 Eino `schema.Message`。后续加工具只需在 `internal/api/tools.go` 的 `extraTools()` 返回 `tool.BaseTool` 列表，无需改 Runner 路径。
+存储与 UI 仍使用 `openai.ChatCompletionMessage`；在 `internal/api` 边界转换成 Eino `schema.Message`。已在 `extraTools()` 接入通用工具；继续扩展只需追加 `tool.BaseTool`，无需改 Runner 路径。
 
 ---
 
