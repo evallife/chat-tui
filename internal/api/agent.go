@@ -59,14 +59,23 @@ func (c *Client) StreamAgent(ctx context.Context, instruction string, history []
 		return "", fmt.Errorf("chat model (%s): %w", c.config.CanonicalProvider(), err)
 	}
 
+	c.config.Normalize()
+	effective := EffectiveInstruction(instruction, c.config)
+	name := c.config.AgentName
+	if name == "" {
+		name = "chat-tui"
+	}
+
 	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
-		Name:        "chat-tui",
-		Description: "Terminal multi-provider chat agent",
-		Instruction: instruction,
-		Model:       cm,
+		Name:          name,
+		Description:   "Terminal multi-provider chat agent",
+		Instruction:   effective,
+		Model:         cm,
+		MaxIterations: c.config.MaxIterations,
+		Exit:          adk.ExitTool{},
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools: extraTools(),
+				Tools: extraTools(c.config),
 			},
 		},
 	})

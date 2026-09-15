@@ -11,7 +11,7 @@
 ## ✨ 功能特性
 
 - 🔌 **多提供商**：通过 Eino 官方 `eino-ext` ChatModel 接入 OpenAI 兼容接口、Ark（火山引擎）、Ollama、Claude（Anthropic）、Gemini（Google）、Qwen（DashScope）、DeepSeek。
-- 🧠 **Eino Agent**：补全走 `ChatModelAgent` + `Runner`（`EnableStreaming: true`），消费 `AgentEvent` 流；内置通用工具（`get_current_time` / `get_working_directory` / `list_directory` / `read_file` / `write_file` / `http_get` / `run_command`，见 `internal/api/tools.go`）。
+- 🧠 **Eino Agent（P0 通用 Agent）**：`ChatModelAgent` + `Runner` 流式执行；默认编程助手 Instruction、可配置 `max_iterations`、`ExitTool`、工作区沙箱（`workspace_root`）、可关闭 `write_file` / `run_command`；工具含 time/cwd/list/read/write/http_get/run_command/`glob_files`/`search_text`/`make_directory`。详见 [`docs/requirements.md`](docs/requirements.md) 与 [`docs/prd.md`](docs/prd.md)。
 - 🌊 **流式交互**：助手文本增量渲染；出现 tool-call / 多步状态时在聊天区提示。`Esc` 或底部 **Stop** 取消进行中的 run。
 - 💬 **多行输入**：输入框支持多行编辑，`Shift+Enter` 换行，`Enter` 发送。
 - 📋 **安全粘贴**：支持括号粘贴（bracketed paste），多行粘贴不会被拆成多次发送。
@@ -74,9 +74,17 @@ go build -o chat-tui ./cmd/chat-tui
   "theme": "night",
   "region": "",
   "access_key": "",
-  "secret_key": ""
+  "secret_key": "",
+  "max_iterations": 20,
+  "workspace_root": "",
+  "agent_name": "chat-tui",
+  "disable_write_file": false,
+  "disable_run_command": false,
+  "disable_default_instruction": false
 }
 ```
+
+Agent 相关字段也可在 Settings 中修改；`/agent` 查看运行参数与已启用工具。
 
 ### 支持的 provider
 
@@ -108,7 +116,7 @@ TUI (tview)  ──messages (go-openai types in SQLite)──►  api.Client
                                                           (text deltas / tool status)
 ```
 
-存储与 UI 仍使用 `openai.ChatCompletionMessage`；在 `internal/api` 边界转换成 Eino `schema.Message`。已在 `extraTools()` 接入通用工具；继续扩展只需追加 `tool.BaseTool`，无需改 Runner 路径。
+存储与 UI 仍使用 `openai.ChatCompletionMessage`；在 `internal/api` 边界转换成 Eino `schema.Message`。工具由 `extraTools(cfg)` 按策略与工作区沙箱组装；继续扩展只需追加 `tool.BaseTool`，无需改 Runner 路径。
 
 ---
 
@@ -146,7 +154,9 @@ TUI (tview)  ──messages (go-openai types in SQLite)──►  api.Client
 
 在聊天输入框内输入：
 - `/read <path>`：读取指定路径的文件内容并发送给 AI（例如：`/read ./cmd/chat-tui/main.go`）。
-- `/config`：显示当前 provider / model / base_url。
+- `/tools`：列出当前启用的 Agent 工具。
+- `/agent`：显示 Instruction 摘要、迭代上限、工作区与工具策略。
+- `/config`：显示当前 provider / model / agent 配置。
 - `/help`：指令与快捷键一览。
 
 ---

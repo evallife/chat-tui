@@ -20,6 +20,19 @@ type Config struct {
 	// AccessKey / SecretKey are Ark alternatives to api_key.
 	AccessKey string `json:"access_key,omitempty"`
 	SecretKey string `json:"secret_key,omitempty"`
+
+	// MaxIterations caps ChatModelAgent generation cycles (default 20, clamped 1–100).
+	MaxIterations int `json:"max_iterations,omitempty"`
+	// WorkspaceRoot sandboxes file/shell tools; empty means process cwd.
+	WorkspaceRoot string `json:"workspace_root,omitempty"`
+	// AgentName is the ADK ChatModelAgent Name (default "chat-tui").
+	AgentName string `json:"agent_name,omitempty"`
+	// DisableWriteFile skips registering write_file when true (default false = enabled).
+	DisableWriteFile bool `json:"disable_write_file,omitempty"`
+	// DisableRunCommand skips registering run_command when true (default false = enabled).
+	DisableRunCommand bool `json:"disable_run_command,omitempty"`
+	// DisableDefaultInstruction skips injecting the built-in agent instruction when system prompt is empty.
+	DisableDefaultInstruction bool `json:"disable_default_instruction,omitempty"`
 }
 
 const (
@@ -60,10 +73,37 @@ func (c *Config) Normalize() {
 	if c.Theme == "" {
 		c.Theme = "night"
 	}
+	if c.MaxIterations == 0 {
+		c.MaxIterations = 20
+	}
+	if c.MaxIterations < 1 {
+		c.MaxIterations = 1
+	}
+	if c.MaxIterations > 100 {
+		c.MaxIterations = 100
+	}
+	if c.AgentName == "" {
+		c.AgentName = "chat-tui"
+	}
 }
 
 func (c Config) CanonicalProvider() string {
 	return CanonicalProvider(c.Provider)
+}
+
+// WriteFileEnabled reports whether write_file should be registered.
+func (c Config) WriteFileEnabled() bool {
+	return !c.DisableWriteFile
+}
+
+// RunCommandEnabled reports whether run_command should be registered.
+func (c Config) RunCommandEnabled() bool {
+	return !c.DisableRunCommand
+}
+
+// DefaultInstructionEnabled reports whether the built-in instruction may be used.
+func (c Config) DefaultInstructionEnabled() bool {
+	return !c.DisableDefaultInstruction
 }
 
 type Conversation struct {

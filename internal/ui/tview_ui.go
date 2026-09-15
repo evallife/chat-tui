@@ -590,8 +590,12 @@ func (ui *TViewUI) handleCommand(input string) {
 		ui.appendSystemMsg("Chat display cleared.")
 
 	case "/config":
-		ui.appendSystemMsg(fmt.Sprintf("Current Config:\n- Provider: %s\n- BaseURL: %s\n- Model: %s\n- Region: %s\n- System Prompt: %s",
-			ui.config.CanonicalProvider(), ui.config.BaseURL, ui.config.Model, ui.config.Region, ui.systemPrompt))
+		ui.config.Normalize()
+		ui.appendSystemMsg(fmt.Sprintf("Current Config:\n- Provider: %s\n- BaseURL: %s\n- Model: %s\n- Region: %s\n- Max Iterations: %d\n- Workspace Root: %s\n- Write File: %v\n- Run Command: %v\n- Agent Name: %s\n- Default Instruction: %v\n- System Prompt: %s",
+			ui.config.CanonicalProvider(), ui.config.BaseURL, ui.config.Model, ui.config.Region,
+			ui.config.MaxIterations, ui.config.WorkspaceRoot,
+			ui.config.WriteFileEnabled(), ui.config.RunCommandEnabled(),
+			ui.config.AgentName, ui.config.DefaultInstructionEnabled(), ui.systemPrompt))
 
 	case "/save":
 		filename := "chat_save.md"
@@ -608,21 +612,53 @@ func (ui *TViewUI) handleCommand(input string) {
 		ui.exportToFile(filename)
 
 	case "/tools":
-		ui.appendSystemMsg(`Built-in Eino agent tools:
-  get_current_time       Local date/time
-  get_working_directory  Process cwd
-  list_directory         List a folder
-  read_file              Read a text file (capped)
-  write_file             Write/append a text file
-  http_get               HTTP GET a URL (capped)
-  run_command            Short shell command (timeout)
+		ui.config.Normalize()
+		names := api.ToolNames(ui.config)
+		var b strings.Builder
+		b.WriteString("Enabled Eino agent tools:\n")
+		for _, n := range names {
+			fmt.Fprintf(&b, "  %s\n", n)
+		}
+		b.WriteString("  exit                   ADK exit (end agent)\n")
+		b.WriteString("\nThe model may call these during a reply; results show as ⚙ tool:… in the chat.\n")
+		ui.appendSystemMsg(b.String())
 
-The model may call these during a reply; results show as ⚙ tool:… in the chat.
-`)
+	case "/agent":
+		ui.config.Normalize()
+		eff := api.EffectiveInstruction(ui.systemPrompt, ui.config)
+		summary := eff
+		if len(summary) > 160 {
+			summary = summary[:160] + "…"
+		}
+		if summary == "" {
+			summary = "(none)"
+		}
+		ws := ui.config.WorkspaceRoot
+		if strings.TrimSpace(ws) == "" {
+			ws = "(cwd)"
+		}
+		names := api.ToolNames(ui.config)
+		ui.appendSystemMsg(fmt.Sprintf(`Agent status:
+- Name: %s
+- Max iterations: %d
+- Workspace root: %s
+- Write file: %v
+- Run command: %v
+- Default instruction: %v
+- Instruction summary: %s
+- Tools (%d): %s
+- Exit tool: enabled
+`,
+			ui.config.AgentName, ui.config.MaxIterations, ws,
+			ui.config.WriteFileEnabled(), ui.config.RunCommandEnabled(),
+			ui.config.DefaultInstructionEnabled(), summary,
+			len(names), strings.Join(names, ", ")))
+
 	case "/help":
 		ui.appendSystemMsg(`Commands:
   /read <path>   Inject file content into chat
-  /tools         List built-in Eino agent tools
+  /tools         List enabled Eino agent tools
+  /agent         Show agent status (instruction, tools, limits)
   /clear         Clear chat display (history kept)
   /config        Show current settings
   /help          Show this help
@@ -1053,23 +1089,30 @@ func (ui *TViewUI) rebuildSettingsForm() {
 	form.AddInputField("Access Key", ui.config.AccessKey, 40, nil, nil)
 	form.AddInputField("Secret Key", ui.config.SecretKey, 40, nil, nil)
 	form.AddDropDown("Theme", themeNames, currentThemeIndex, nil)
-	form.GetFormItem(0).(*tview.DropDown).SetSelectedFunc(func(_ string, optionIndex int) {
+	form.AddInputField("Max Iterations", fmt.Sprintf("%d", ui.config.MaxIterations), 8, nil, nil)
+	form.AddInputField("Workspace Root", ui.config.WorkspaceRoot, 48, nil, nil)
+	form.AddCheckbox("Enable Write File", ui.config.WriteFileEnabled(), nil)
+	form.AddCheckbox("Enable Run Command", ui.config.RunCommandEnabled(), nil)
+	form.AddInputField("Agent Name", ui.config.AgentName, 24, nil, nil)
+	form.AddCheckbox("Use Default Instruction", ui.config.DefaultInstructionEnabled(), nil)
+
+	form.GetFormItemByLabel("Provider").(*tview.DropDown).SetSelectedFunc(func(_ string, optionIndex int) {
 		if optionIndex < 0 || optionIndex >= len(providers) {
 			return
 		}
 		p := providers[optionIndex].Key
-		if field, ok := form.GetFormItem(2).(*tview.InputField); ok {
+		if field, ok := form.GetFormItemByLabel("Base URL").(*tview.InputField); ok {
 			if api.IsKnownDefaultBaseURL(field.GetText()) {
 				field.SetText(api.DefaultBaseURL(p))
 			}
 		}
-		if field, ok := form.GetFormItem(3).(*tview.InputField); ok && strings.TrimSpace(field.GetText()) == "" {
+		if field, ok := form.GetFormItemByLabel("Model").(*tview.InputField); ok && strings.TrimSpace(field.GetText()) == "" {
 			field.SetText(api.DefaultModel(p))
 		}
 	})
 
 	form.AddButton("Save", func() {
-		_, providerLabel := form.GetFormItem(0).(*tview.DropDown).GetCurrentOption()
+		_, providerLabel := form.GetFormItemByLabel("Provider").(*tview.DropDown).GetCurrentOption()
 		chosen := ui.config.CanonicalProvider()
 		for _, p := range providers {
 			if p.Label == providerLabel {
@@ -1078,16 +1121,28 @@ func (ui *TViewUI) rebuildSettingsForm() {
 			}
 		}
 		ui.config.Provider = chosen
-		ui.config.APIKey = form.GetFormItem(1).(*tview.InputField).GetText()
-		ui.config.BaseURL = form.GetFormItem(2).(*tview.InputField).GetText()
-		ui.config.Model = form.GetFormItem(3).(*tview.InputField).GetText()
-		ui.config.Region = form.GetFormItem(4).(*tview.InputField).GetText()
-		ui.config.AccessKey = form.GetFormItem(5).(*tview.InputField).GetText()
-		ui.config.SecretKey = form.GetFormItem(6).(*tview.InputField).GetText()
-		themeIndex, _ := form.GetFormItem(7).(*tview.DropDown).GetCurrentOption()
+		ui.config.APIKey = form.GetFormItemByLabel("API Key").(*tview.InputField).GetText()
+		ui.config.BaseURL = form.GetFormItemByLabel("Base URL").(*tview.InputField).GetText()
+		ui.config.Model = form.GetFormItemByLabel("Model").(*tview.InputField).GetText()
+		ui.config.Region = form.GetFormItemByLabel("Region").(*tview.InputField).GetText()
+		ui.config.AccessKey = form.GetFormItemByLabel("Access Key").(*tview.InputField).GetText()
+		ui.config.SecretKey = form.GetFormItemByLabel("Secret Key").(*tview.InputField).GetText()
+		themeIndex, _ := form.GetFormItemByLabel("Theme").(*tview.DropDown).GetCurrentOption()
 		if themeIndex >= 0 && themeIndex < len(themeKeys) {
 			ui.config.Theme = themeKeys[themeIndex]
 		}
+		maxStr := strings.TrimSpace(form.GetFormItemByLabel("Max Iterations").(*tview.InputField).GetText())
+		var maxIter int
+		if _, err := fmt.Sscanf(maxStr, "%d", &maxIter); err == nil {
+			ui.config.MaxIterations = maxIter
+		} else if maxStr == "" {
+			ui.config.MaxIterations = 0
+		}
+		ui.config.WorkspaceRoot = strings.TrimSpace(form.GetFormItemByLabel("Workspace Root").(*tview.InputField).GetText())
+		ui.config.DisableWriteFile = !form.GetFormItemByLabel("Enable Write File").(*tview.Checkbox).IsChecked()
+		ui.config.DisableRunCommand = !form.GetFormItemByLabel("Enable Run Command").(*tview.Checkbox).IsChecked()
+		ui.config.AgentName = strings.TrimSpace(form.GetFormItemByLabel("Agent Name").(*tview.InputField).GetText())
+		ui.config.DisableDefaultInstruction = !form.GetFormItemByLabel("Use Default Instruction").(*tview.Checkbox).IsChecked()
 		ui.config.Normalize()
 		_ = config.SaveConfig(ui.config)
 		ui.apiClient = api.NewClient(ui.config)
@@ -1104,7 +1159,7 @@ func (ui *TViewUI) rebuildSettingsForm() {
 	ui.SettingsForm = form
 
 	hint := tview.NewTextView().SetDynamicColors(true)
-	fmt.Fprint(hint, "[gray]Providers: openai · ark · ollama · claude · gemini · qwen · deepseek  |  empty Base URL uses the provider default  |  tools: time/cwd/list/read/write/http_get/run_command[-]")
+	fmt.Fprint(hint, "[gray]Providers: openai · ark · ollama · claude · gemini · qwen · deepseek  |  workspace sandbox + tool policy  |  /agent for status[-]")
 
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(hint, 1, 0, false).
