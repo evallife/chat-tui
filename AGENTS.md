@@ -19,7 +19,8 @@ chat-tui/
 │   │   ├── convert.go       # go-openai messages ↔ eino schema.Message
 │   │   ├── tools.go         # time/cwd/list/read/write/http_get/run_command/glob/search/mkdir
 │   │   └── tools_workspace.go # Workspace sandbox + ToolConfirmer
-│   ├── config/config.go     # JSON config: ~/.xftui.json
+│   ├── paths/paths.go       # ~/.chat-tui.json / .db / workspace; legacy xftui migrate
+│   ├── config/config.go     # JSON config: ~/.chat-tui.json
 │   ├── storage/
 │   │   ├── sqlite.go        # CRUD; Open(path) for tests
 │   │   └── migrate.go       # schema_migrations versioned DDL
@@ -50,6 +51,7 @@ chat-tui/
 | Message conversion | `internal/api/convert.go` | UI/SQLite keep go-openai types |
 | Tools | `internal/api/tools.go` | `extraToolsFor(cfg, confirm)` |
 | Workspace + HITL | `internal/api/tools_workspace.go` | `resolveInWorkspace`, `ToolConfirmer` |
+| Config / DB / workspace paths | `internal/paths/paths.go` | `~/.chat-tui.json`, `~/.chat-tui.db`, `~/chat-tui-workspace` |
 | Config schema | `internal/types/types.go` | `provider`, `region`, `access_key`, `secret_key` |
 | Storage operations | `internal/storage/sqlite.go` | CRUD |
 | Schema migrations | `internal/storage/migrate.go` | `schema_migrations` table, current v2 |
@@ -59,7 +61,8 @@ chat-tui/
 
 ## CONVENTIONS
 
-- **Config path hardcoded**: `~/.xftui.json`, `~/.xftui.db`
+- **Config path**: `~/.chat-tui.json`, `~/.chat-tui.db`; default workspace `~/chat-tui-workspace`
+- **Legacy migrate**: `~/.xftui.json` / `~/.xftui.db` copied to the new names on first launch, then removed
 - **Missing `provider` defaults to `openai`** — existing `base_url` / `api_key` / `model` still work
 - **First run** writes default config (empty `api_key`) and enters the TUI
 - **go-openai types in SQLite/UI** — convert at the `internal/api` boundary

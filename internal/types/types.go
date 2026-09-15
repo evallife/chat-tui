@@ -23,7 +23,8 @@ type Config struct {
 
 	// MaxIterations caps ChatModelAgent generation cycles (default 20, clamped 1–100).
 	MaxIterations int `json:"max_iterations,omitempty"`
-	// WorkspaceRoot sandboxes file/shell tools; empty means process cwd.
+	// WorkspaceRoot sandboxes file/shell tools. Empty means process cwd.
+	// New and migrated configs default to ~/chat-tui-workspace.
 	WorkspaceRoot string `json:"workspace_root,omitempty"`
 	// AgentName is the ADK ChatModelAgent Name (default "chat-tui").
 	AgentName string `json:"agent_name,omitempty"`

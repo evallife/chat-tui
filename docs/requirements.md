@@ -54,7 +54,7 @@
 | R-07 | 新工具 `search_text` | 在工作区内按子串/简单模式搜文本（可用 `rg` 若存在，否则 Go 回退），有结果上限 |
 | R-08 | 新工具 `make_directory` | 在工作区内创建目录 |
 | R-09 | `/agent` 命令 | 打印 instruction 摘要、max_iterations、workspace_root、已启用工具名 |
-| R-10 | Settings / 配置持久化 | 上述字段写入 `~/.xftui.json`，Settings 可改 |
+| R-10 | Settings / 配置持久化 | 上述字段写入 `~/.chat-tui.json`，Settings 可改 |
 | R-11 | 文档 | 本文件 + `docs/prd.md`；README 功能列表同步 P0 |
 
 ### P1 — 后续（文档保留，本轮可不实现）
@@ -71,7 +71,7 @@
 ## 5. 非功能需求
 
 - 工具输出继续有大小/超时上限；搜索默认超时 ≤ 10s。
-- 配置缺省向后兼容：旧 `~/.xftui.json` 无新字段时用默认值。
+- 配置缺省向后兼容：旧 `~/.xftui.json` 在启动时迁移为 `~/.chat-tui.json`；无新字段时用默认值。默认工作区为 `~/chat-tui-workspace`。
 - 单测覆盖：路径沙箱、工具开关、默认 instruction 选择、glob/search 基本行为。
 - 不引入需 Pro 的 Cloud Agent 依赖；实现落在本仓库 Go 代码。
 

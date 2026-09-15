@@ -94,7 +94,7 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 	ui.App.SetRoot(ui.Pages, true).EnableMouse(true).EnablePaste(true)
 	ui.App.SetInputCapture(ui.globalKeys)
 
-	ui.warnIfUnconfigured()
+	ui.startupNotices()
 	return ui
 }
 
@@ -152,6 +152,16 @@ func (ui *TViewUI) globalKeys(event *tcell.EventKey) *tcell.EventKey {
 	return event
 }
 
+func (ui *TViewUI) startupNotices() {
+	ws := strings.TrimSpace(ui.config.WorkspaceRoot)
+	if ws == "" {
+		ui.appendSystemMsg("Workspace is unset; file/shell tools use the process current directory. Set Workspace Root in Settings to sandbox them.")
+	} else {
+		ui.appendSystemMsg(fmt.Sprintf("Workspace sandbox: %s\nFile and shell tools stay inside this folder. write_file / run_command still require Allow/Deny.", ws))
+	}
+	ui.warnIfUnconfigured()
+}
+
 func (ui *TViewUI) warnIfUnconfigured() {
 	p := ui.config.CanonicalProvider()
 	if p == types.ProviderOllama {
@@ -163,7 +173,7 @@ func (ui *TViewUI) warnIfUnconfigured() {
 	if p == types.ProviderArk && strings.TrimSpace(ui.config.AccessKey) != "" {
 		return
 	}
-	ui.appendSystemMsg("No API credentials set. Press Ctrl+S to open Settings, then Save. write_file / run_command require confirmation before they run.")
+	ui.appendSystemMsg("No API credentials set. Press Ctrl+S to open Settings, then Save.")
 }
 
 func (ui *TViewUI) reportError(what string, err error) {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/evallife/chat-tui/internal/paths"
 	"github.com/evallife/chat-tui/internal/types"
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
@@ -18,12 +19,29 @@ type Manager struct {
 }
 
 func DefaultDBPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".xftui.db")
+	return paths.DBFile()
+}
+
+func LegacyDBPath() string {
+	return paths.LegacyDBFile()
 }
 
 func NewManager() (*Manager, error) {
-	return Open(DefaultDBPath())
+	rel, err := paths.CopyIfNeeded(LegacyDBPath(), DefaultDBPath())
+	if err != nil {
+		return nil, fmt.Errorf("migrate legacy database: %w", err)
+	}
+	m, err := Open(DefaultDBPath())
+	if err != nil {
+		if rel.Did {
+			_ = os.Remove(DefaultDBPath())
+		}
+		return nil, err
+	}
+	if rel.Did {
+		_ = os.Remove(rel.From)
+	}
+	return m, nil
 }
 
 func Open(dbPath string) (*Manager, error) {

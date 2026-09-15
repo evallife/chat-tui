@@ -56,7 +56,9 @@ go build -o chat-tui ./cmd/chat-tui
 ### 环境要求
 - **Go**: 1.25+
 
-首次运行会在 `~/.xftui.json` 写入默认配置（`api_key` 为空）并直接进入 TUI。在 **Settings**（`Ctrl+S`）里填凭据后 Save 即可，不必再重启。
+首次运行会在 `~/.chat-tui.json` 写入默认配置（`api_key` 为空，工作区为 `~/chat-tui-workspace`）并直接进入 TUI。在 **Settings**（`Ctrl+S`）里填凭据后 Save 即可，不必再重启。
+
+若本机仍有旧文件 `~/.xftui.json` / `~/.xftui.db`，启动时会复制到新路径；新文件可用后删除旧文件。已填写的 `api_key`、会话历史会保留；空的 `workspace_root` 会写成 `~/chat-tui-workspace`。
 
 ---
 
@@ -64,7 +66,7 @@ go build -o chat-tui ./cmd/chat-tui
 
 您可以在应用的 **Settings** 界面直接修改提供商、模型与凭据，配置将自动保存。
 
-**手动配置路径**：`~/.xftui.json`（文件名保持兼容）
+**手动配置路径**：`~/.chat-tui.json`（会话库：`~/.chat-tui.db`）
 
 缺少 `provider` 时默认 `openai`，继续使用原有的 `base_url` / `api_key` / `model`。
 
@@ -79,7 +81,7 @@ go build -o chat-tui ./cmd/chat-tui
   "access_key": "",
   "secret_key": "",
   "max_iterations": 20,
-  "workspace_root": "",
+  "workspace_root": "~/chat-tui-workspace",
   "agent_name": "chat-tui",
   "disable_write_file": false,
   "disable_run_command": false,

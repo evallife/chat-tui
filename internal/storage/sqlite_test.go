@@ -210,11 +210,57 @@ func TestNewManagerUsesHomeDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	want := filepath.Join(home, ".xftui.db")
+	want := filepath.Join(home, ".chat-tui.db")
 	if m.Path() != want {
 		t.Fatalf("path=%q want %q", m.Path(), want)
 	}
 	if _, err := os.Stat(want); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMigratesLegacyDatabase(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	oldPath := filepath.Join(home, ".xftui.db")
+	old, err := Open(oldPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := old.CreateConversation("legacy chat", "gpt-4o-mini", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.SaveMessage(id, openai.ChatMessageRoleUser, "hello from old db"); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := NewManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	if m.Path() != DefaultDBPath() {
+		t.Fatalf("path=%q", m.Path())
+	}
+	conv, err := m.GetConversation(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conv.Title != "legacy chat" {
+		t.Fatalf("title=%q", conv.Title)
+	}
+	msgs, err := m.GetMessages(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 || msgs[0].Content != "hello from old db" {
+		t.Fatalf("messages: %+v", msgs)
+	}
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Fatalf("legacy db should be removed, err=%v", err)
 	}
 }
