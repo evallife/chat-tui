@@ -46,8 +46,8 @@ type TViewUI struct {
 	lastClickedTime time.Time
 
 	// Streaming state
-	isStreaming   bool
-	streamCancel  context.CancelFunc
+	isStreaming  bool
+	streamCancel context.CancelFunc
 
 	// Input processing state
 	isProcessingInput bool
@@ -136,6 +136,7 @@ var themes = map[string]Theme{
 }
 
 func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
+	cfg.Normalize()
 	if cfg.Theme == "" {
 		cfg.Theme = "night"
 	}
@@ -245,7 +246,7 @@ func (ui *TViewUI) setupSidebar() {
 	ui.Sidebar = tview.NewList().
 		AddItem("New Chat", "Start fresh", 'n', ui.newConversation).
 		AddItem("History", "Load past chats", 'h', ui.showHistory).
-		AddItem("Settings", "Config API", 's', ui.showSettings).
+		AddItem("Settings", "Provider + credentials", 's', ui.showSettings).
 		AddItem("System Prompts", "Change AI role", 'p', ui.showSystemPrompts).
 		AddItem("Quit", "Exit app", 'q', func() { ui.App.Stop() })
 
@@ -261,7 +262,7 @@ func (ui *TViewUI) setupChatView() {
 		SetChangedFunc(func() {
 			ui.App.Draw()
 		})
-	ui.ChatView.SetBorder(true).SetTitle(" Chat History ")
+	ui.ChatView.SetBorder(true).SetTitle(fmt.Sprintf(" Chat History · %s/%s ", ui.config.CanonicalProvider(), ui.config.Model))
 	ui.ChatView.SetTitleColor(tview.Styles.TitleColor)
 
 	ui.InputField = tview.NewTextArea().
@@ -278,8 +279,8 @@ func (ui *TViewUI) setupChatView() {
 				ui.navigateHistory(1)
 				return nil
 			case tcell.KeyEnter:
-				// Prevent multiple simultaneous sends
-				if ui.isProcessingInput {
+				// Prevent multiple simultaneous sends / overlap with an in-flight agent run
+				if ui.isProcessingInput || ui.isStreaming {
 					return nil
 				}
 
@@ -513,7 +514,7 @@ func (ui *TViewUI) handleInput(input string) {
 	ui.storage.SaveMessage(ui.convID, openai.ChatMessageRoleUser, input)
 
 	ui.refreshChat()
-	go ui.streamOpenAIResponse()
+	go ui.streamAgentResponse()
 }
 
 func (ui *TViewUI) addInputHistory(input string) {
@@ -589,8 +590,8 @@ func (ui *TViewUI) handleCommand(input string) {
 		ui.appendSystemMsg("Chat display cleared.")
 
 	case "/config":
-		ui.appendSystemMsg(fmt.Sprintf("Current Config:\n- BaseURL: %s\n- Model: %s\n- System Prompt: %s",
-			ui.config.BaseURL, ui.config.Model, ui.systemPrompt))
+		ui.appendSystemMsg(fmt.Sprintf("Current Config:\n- Provider: %s\n- BaseURL: %s\n- Model: %s\n- Region: %s\n- System Prompt: %s",
+			ui.config.CanonicalProvider(), ui.config.BaseURL, ui.config.Model, ui.config.Region, ui.systemPrompt))
 
 	case "/save":
 		filename := "chat_save.md"
@@ -619,7 +620,7 @@ Shortcuts:
   Ctrl+N  New chat       Ctrl+H  History
   Ctrl+S  Settings       Ctrl+E  Export
   Ctrl+B  Toggle sidebar Ctrl+Y  Copy mode
-  Ctrl+F  Search         Esc Cancel/Quit
+  Ctrl+F  Search         Esc Cancel stream / Quit
   Up/Down Input history`)
 
 	default:
@@ -649,7 +650,13 @@ func (ui *TViewUI) exportToFile(filename string) {
 	}
 }
 
-func (ui *TViewUI) streamOpenAIResponse() {
+func (ui *TViewUI) stopStreaming() {
+	if ui.isStreaming && ui.streamCancel != nil {
+		ui.streamCancel()
+	}
+}
+
+func (ui *TViewUI) streamAgentResponse() {
 	ctx, cancel := context.WithCancel(context.Background())
 	ui.isStreaming = true
 	ui.streamCancel = cancel
@@ -657,63 +664,71 @@ func (ui *TViewUI) streamOpenAIResponse() {
 		cancel()
 		ui.isStreaming = false
 		ui.streamCancel = nil
-	}()
-	var sendMsgs []openai.ChatCompletionMessage
-	if ui.systemPrompt != "" {
-		sendMsgs = append(sendMsgs, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: ui.systemPrompt,
-		})
-	}
-	sendMsgs = append(sendMsgs, ui.messages...)
-
-	stream, err := ui.apiClient.StreamChat(ctx, sendMsgs)
-	if err != nil {
 		ui.App.QueueUpdateDraw(func() {
-			ui.appendSystemMsg(fmt.Sprintf("API Error: %v", err))
+			ui.InputField.SetTitle(" Input (Enter to send, Shift+Enter for new line) ")
 		})
-		return
-	}
-	defer stream.Close()
+	}()
 
-	var fullResponse strings.Builder
+	provider := ui.config.CanonicalProvider()
 	ui.App.QueueUpdateDraw(func() {
+		ui.InputField.SetTitle(" Input (Esc / Stop to cancel agent) ")
+		ui.ChatView.SetTitle(fmt.Sprintf(" Chat History · %s/%s · streaming ", provider, ui.config.Model))
 		fmt.Fprintf(ui.ChatView, "\n[green][b]ASSISTANT[-][/b]\n")
 	})
 
-	for {
-		response, err := stream.Recv()
-		if err != nil {
-			if ctx.Err() != nil {
-				ui.App.QueueUpdateDraw(func() {
-					ui.appendSystemMsg("[Stream cancelled]")
-				})
+	fullResponse, err := ui.apiClient.StreamAgent(ctx, ui.systemPrompt, ui.messages, func(ev api.Event) {
+		text := ev.Text
+		tool := ev.ToolName
+		status := ev.Status
+		kind := ev.Kind
+		ui.App.QueueUpdateDraw(func() {
+			switch kind {
+			case api.EventText:
+				fmt.Fprint(ui.ChatView, text)
+			case api.EventReasoning:
+				fmt.Fprintf(ui.ChatView, "[gray]%s[-]", text)
+			case api.EventToolCall:
+				fmt.Fprintf(ui.ChatView, "\n[yellow][tool: %s] calling...[-]\n", tool)
+				ui.ChatView.SetTitle(fmt.Sprintf(" Chat History · tool:%s ", tool))
+			case api.EventToolResult:
+				name := tool
+				if name == "" {
+					name = "tool"
+				}
+				fmt.Fprintf(ui.ChatView, "\n[yellow][tool: %s] done[-]\n", name)
+			case api.EventStatus:
+				if status != "" {
+					ui.ChatView.SetTitle(fmt.Sprintf(" Chat History · %s ", status))
+				}
 			}
-			break
-		}
-		content := response.Choices[0].Delta.Content
-		if content != "" {
-			fullResponse.WriteString(content)
-			ui.App.QueueUpdateDraw(func() {
-				fmt.Fprint(ui.ChatView, content)
-			})
-		}
-	}
+			ui.ChatView.ScrollToEnd()
+		})
+	})
 
 	ui.App.QueueUpdateDraw(func() {
-		if fullResponse.Len() > 0 {
+		if fullResponse != "" {
 			ui.messages = append(ui.messages, openai.ChatCompletionMessage{
 				Role:    openai.ChatMessageRoleAssistant,
-				Content: fullResponse.String(),
+				Content: fullResponse,
 			})
-			ui.storage.SaveMessage(ui.convID, openai.ChatMessageRoleAssistant, fullResponse.String())
+			if ui.convID != "" {
+				_ = ui.storage.SaveMessage(ui.convID, openai.ChatMessageRoleAssistant, fullResponse)
+			}
 		}
 		ui.refreshChat()
+		if err != nil {
+			if ctx.Err() != nil {
+				ui.appendSystemMsg("[Stream cancelled]")
+			} else {
+				ui.appendSystemMsg(fmt.Sprintf("API Error: %v", err))
+			}
+		}
 	})
 }
 
 func (ui *TViewUI) refreshChat() {
 	ui.ChatView.Clear()
+	ui.ChatView.SetTitle(fmt.Sprintf(" Chat History · %s/%s ", ui.config.CanonicalProvider(), ui.config.Model))
 	if ui.systemPrompt != "" {
 		fmt.Fprintf(ui.ChatView, "[gray][i]System Prompt: %s[-][/i]\n\n", ui.systemPrompt)
 	}
@@ -973,52 +988,111 @@ func (ui *TViewUI) confirmDeletePrompt(p types.SystemPrompt, parentList *tview.L
 }
 
 func (ui *TViewUI) setupSettingsView() {
-	ui.SettingsForm = tview.NewForm().
-		AddInputField("API Key", ui.config.APIKey, 40, nil, nil).
-		AddInputField("Base URL", ui.config.BaseURL, 40, nil, nil).
-		AddInputField("Model", ui.config.Model, 40, nil, nil)
+	ui.rebuildSettingsForm()
+}
+
+func (ui *TViewUI) rebuildSettingsForm() {
+	ui.config.Normalize()
+	providers := api.SupportedProviders()
+	providerLabels := make([]string, len(providers))
+	providerIndex := 0
+	for i, p := range providers {
+		providerLabels[i] = p.Label
+		if p.Key == ui.config.CanonicalProvider() {
+			providerIndex = i
+		}
+	}
 
 	themeKeys := make([]string, 0, len(themes))
 	for key := range themes {
 		themeKeys = append(themeKeys, key)
 	}
 	sort.Strings(themeKeys)
-
 	themeNames := make([]string, 0, len(themeKeys))
 	currentThemeIndex := 0
 	if ui.config.Theme == "" {
 		ui.config.Theme = "night"
 	}
 	for i, key := range themeKeys {
-		theme := themes[key]
-		themeNames = append(themeNames, theme.Name)
+		themeNames = append(themeNames, themes[key].Name)
 		if key == ui.config.Theme {
 			currentThemeIndex = i
 		}
 	}
-	ui.SettingsForm.AddDropDown("Theme", themeNames, currentThemeIndex, nil)
-	ui.SettingsForm.AddButton("Save", func() {
-		ui.config.APIKey = ui.SettingsForm.GetFormItem(0).(*tview.InputField).GetText()
-		ui.config.BaseURL = ui.SettingsForm.GetFormItem(1).(*tview.InputField).GetText()
-		ui.config.Model = ui.SettingsForm.GetFormItem(2).(*tview.InputField).GetText()
-		themeIndex, _ := ui.SettingsForm.GetFormItem(3).(*tview.DropDown).GetCurrentOption()
+
+	form := tview.NewForm()
+	form.AddDropDown("Provider", providerLabels, providerIndex, nil)
+	form.AddInputField("API Key", ui.config.APIKey, 48, nil, nil)
+	form.AddInputField("Base URL", ui.config.BaseURL, 48, nil, nil)
+	form.AddInputField("Model", ui.config.Model, 40, nil, nil)
+	form.AddInputField("Region", ui.config.Region, 24, nil, nil)
+	form.AddInputField("Access Key", ui.config.AccessKey, 40, nil, nil)
+	form.AddInputField("Secret Key", ui.config.SecretKey, 40, nil, nil)
+	form.AddDropDown("Theme", themeNames, currentThemeIndex, nil)
+	form.GetFormItem(0).(*tview.DropDown).SetSelectedFunc(func(_ string, optionIndex int) {
+		if optionIndex < 0 || optionIndex >= len(providers) {
+			return
+		}
+		p := providers[optionIndex].Key
+		if field, ok := form.GetFormItem(2).(*tview.InputField); ok {
+			if api.IsKnownDefaultBaseURL(field.GetText()) {
+				field.SetText(api.DefaultBaseURL(p))
+			}
+		}
+		if field, ok := form.GetFormItem(3).(*tview.InputField); ok && strings.TrimSpace(field.GetText()) == "" {
+			field.SetText(api.DefaultModel(p))
+		}
+	})
+
+	form.AddButton("Save", func() {
+		_, providerLabel := form.GetFormItem(0).(*tview.DropDown).GetCurrentOption()
+		chosen := ui.config.CanonicalProvider()
+		for _, p := range providers {
+			if p.Label == providerLabel {
+				chosen = p.Key
+				break
+			}
+		}
+		ui.config.Provider = chosen
+		ui.config.APIKey = form.GetFormItem(1).(*tview.InputField).GetText()
+		ui.config.BaseURL = form.GetFormItem(2).(*tview.InputField).GetText()
+		ui.config.Model = form.GetFormItem(3).(*tview.InputField).GetText()
+		ui.config.Region = form.GetFormItem(4).(*tview.InputField).GetText()
+		ui.config.AccessKey = form.GetFormItem(5).(*tview.InputField).GetText()
+		ui.config.SecretKey = form.GetFormItem(6).(*tview.InputField).GetText()
+		themeIndex, _ := form.GetFormItem(7).(*tview.DropDown).GetCurrentOption()
 		if themeIndex >= 0 && themeIndex < len(themeKeys) {
 			ui.config.Theme = themeKeys[themeIndex]
 		}
-		config.SaveConfig(ui.config)
+		ui.config.Normalize()
+		_ = config.SaveConfig(ui.config)
 		ui.apiClient = api.NewClient(ui.config)
 		ui.applyTheme(ui.config.Theme)
+		ui.refreshChat()
 		ui.Pages.SwitchToPage("chat")
 		ui.App.SetFocus(ui.InputField)
 	}).
 		AddButton("Cancel", func() {
 			ui.Pages.SwitchToPage("chat")
 		})
-	ui.SettingsForm.SetBorder(true).SetTitle(" Settings ")
-	ui.Pages.AddPage("settings", ui.SettingsForm, true, false)
+	form.SetBorder(true).SetTitle(" Settings — Eino multi-provider agent ")
+	form.SetTitleColor(tview.Styles.TitleColor)
+	ui.SettingsForm = form
+
+	hint := tview.NewTextView().SetDynamicColors(true)
+	fmt.Fprint(hint, "[gray]Providers: openai · ark · ollama · claude · gemini · qwen · deepseek  |  empty Base URL uses the provider default  |  tools: internal/api/tools.go[-]")
+
+	flex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(hint, 1, 0, false).
+		AddItem(form, 0, 1, true)
+	if ui.Pages.HasPage("settings") {
+		ui.Pages.RemovePage("settings")
+	}
+	ui.Pages.AddPage("settings", flex, true, false)
 }
 
 func (ui *TViewUI) showSettings() {
+	ui.rebuildSettingsForm()
 	ui.Pages.SwitchToPage("settings")
 }
 
@@ -1027,7 +1101,8 @@ func (ui *TViewUI) newConversation() {
 	ui.convID = ""
 	ui.ChatView.Clear()
 	ui.Pages.SwitchToPage("chat")
-	ui.appendSystemMsg(fmt.Sprintf("New conversation started. (Prompt: %s)", ui.systemPrompt))
+	ui.appendSystemMsg(fmt.Sprintf("New conversation started. (provider=%s model=%s prompt=%s)",
+		ui.config.CanonicalProvider(), ui.config.Model, ui.systemPrompt))
 }
 
 func (ui *TViewUI) exportHistory() {
@@ -1091,6 +1166,7 @@ func (ui *TViewUI) buildFooterBar() *tview.Flex {
 	bar.AddItem(ui.makeButton("Copy", ui.showCopyMode), 0, 1, false)
 	bar.AddItem(ui.makeButton("Prompts", ui.showSystemPrompts), 0, 1, false)
 	bar.AddItem(ui.makeButton("Settings", ui.showSettings), 0, 1, false)
+	bar.AddItem(ui.makeButton("Stop", ui.stopStreaming), 0, 1, false)
 	bar.AddItem(ui.makeButton("Quit", func() { ui.App.Stop() }), 0, 1, false)
 	return bar
 }

@@ -9,7 +9,8 @@
 | Sidebar + conversation list | `tview_ui.go` |
 | Copy mode, history, settings | `tview_ui.go` |
 | Markdown rendering | glamour renderer in `tview_ui.go` |
-| Streaming + cancellation | `tview_ui.go` `streamOpenAIResponse()` |
+| Streaming + cancellation | `tview_ui.go` `streamAgentResponse()` (AgentEvent text / tool status; Esc + Stop) |
+| Provider settings | `tview_ui.go` `rebuildSettingsForm()` |
 
 ## Conventions
 

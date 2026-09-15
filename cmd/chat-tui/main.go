@@ -21,19 +21,21 @@ func main() {
 	if err != nil {
 		if os.IsNotExist(err) {
 			defaultCfg := types.Config{
-				BaseURL: "https://api.openai.com/v1",
-				Model:   "gpt-3.5-turbo",
-				APIKey:  "YOUR_API_KEY_HERE",
-				Theme:   "night",
+				Provider: types.ProviderOpenAI,
+				BaseURL:  "https://api.openai.com/v1",
+				Model:    "gpt-3.5-turbo",
+				APIKey:   "YOUR_API_KEY_HERE",
+				Theme:    "night",
 			}
-		if err := config.SaveConfig(defaultCfg); err != nil {
-			fmt.Printf("Warning: could not save default config: %v\n", err)
-		}
-		fmt.Printf("Created default config at: %s\n", config.GetConfigPath())
+			if err := config.SaveConfig(defaultCfg); err != nil {
+				fmt.Printf("Warning: could not save default config: %v\n", err)
+			}
+			fmt.Printf("Created default config at: %s\n", config.GetConfigPath())
 			os.Exit(0)
 		}
 	}
 
+	cfg.Normalize()
 	app := ui.NewTViewUI(cfg, store)
 	if err := app.Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
