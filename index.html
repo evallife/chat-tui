@@ -5,46 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Chat-TUI — 终端里的 Eino 多提供商 Agent</title>
     <meta name="description" content="Chat-TUI 是一款极简主义、高性能的终端 Agent 聊天应用。基于 CloudWeGo Eino ADK，支持 OpenAI / Ark / Ollama / Claude / Gemini 等多提供商，流式 AgentEvent、主题系统与 Copy Mode。" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
   </head>
-  <body class="bg-[#0a0b0f] text-slate-100 font-[Space_Grotesk]">
-    <div class="bg">
+  <body>
+    <div class="bg-layer" aria-hidden="true">
       <div class="orb orb-a"></div>
       <div class="orb orb-b"></div>
-      <div class="grid"></div>
+      <div class="bg-grid"></div>
     </div>
 
-    <header class="sticky top-0 z-10 border-b border-white/10 backdrop-blur bg-gradient-to-b from-black/90 to-black/50">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <div class="font-semibold tracking-[0.18em]">Chat‑TUI</div>
-        <nav class="hidden items-center gap-6 text-sm text-slate-300 md:flex">
-          <a class="hover:text-white" href="#features">特性</a>
-          <a class="hover:text-white" href="#quickstart">安装</a>
-          <a class="hover:text-white" href="#shortcuts">快捷键</a>
-          <a class="hover:text-white" href="#themes">主题</a>
+    <header class="site-header">
+      <div class="wrap inner">
+        <div class="brand">Chat‑TUI</div>
+        <nav class="nav">
+          <a href="#features">特性</a>
+          <a href="#quickstart">安装</a>
+          <a href="#shortcuts">快捷键</a>
+          <a href="#themes">主题</a>
         </nav>
-        <div class="flex items-center gap-2">
-          <a class="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold hover:border-white/40" href="https://github.com/evallife/chat-tui">GitHub</a>
-          <a class="rounded-full bg-gradient-to-br from-[#5ce0d8] to-sky-400 px-4 py-2 text-sm font-semibold text-slate-900" href="https://github.com/evallife/chat-tui/releases">下载</a>
+        <div class="actions">
+          <a class="btn btn-ghost" href="https://github.com/evallife/chat-tui">GitHub</a>
+          <a class="btn btn-primary" href="https://github.com/evallife/chat-tui/releases">下载</a>
         </div>
       </div>
     </header>
 
-    <main class="mx-auto max-w-6xl px-6 pb-20">
-      <section class="grid gap-12 py-20 md:grid-cols-[1.2fr_1fr] md:items-center">
-        <div class="reveal" style="--delay: 0.05s">
-          <p class="text-xs uppercase tracking-[0.4em] text-amber-300">Eino Agent · Multi‑provider · Streamed</p>
-          <h1 class="mt-4 font-[ZCOOL_XiaoWei] text-4xl leading-tight md:text-5xl">把多模型 Agent<br />装进你的终端里。</h1>
-          <p class="mt-4 text-lg text-slate-300">Chat‑TUI 是一款极简主义、高性能的终端 Agent 聊天应用。对话经 CloudWeGo Eino 的 ChatModelAgent + Runner 流式执行，一套 TUI 切换 OpenAI 兼容接口、Ark、Ollama、Claude、Gemini 等官方提供商。</p>
-          <div class="mt-6 flex flex-wrap gap-3">
-            <a class="rounded-full bg-gradient-to-br from-[#5ce0d8] to-sky-400 px-5 py-2 text-sm font-semibold text-slate-900" href="#quickstart">快速开始</a>
-            <a class="rounded-full border border-white/20 px-5 py-2 text-sm font-semibold hover:border-white/40" href="#features">了解特性</a>
+    <main class="wrap">
+      <section class="hero">
+        <div>
+          <p class="kicker">Eino Agent · Multi‑provider · Streamed</p>
+          <h1>把多模型 Agent<br />装进你的终端里。</h1>
+          <p class="lead">Chat‑TUI 是一款极简主义、高性能的终端 Agent 聊天应用。对话经 CloudWeGo Eino 的 ChatModelAgent + Runner 流式执行，一套 TUI 切换 OpenAI 兼容接口、Ark、Ollama、Claude、Gemini 等官方提供商。</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="#quickstart">快速开始</a>
+            <a class="btn btn-ghost" href="#features">了解特性</a>
           </div>
-          <div class="mt-6 flex flex-wrap gap-4 text-sm text-slate-400">
+          <div class="meta">
             <span>Go 1.25+</span>
             <span>Eino ADK Agent</span>
             <span>Multi‑provider</span>
@@ -52,65 +48,63 @@
           </div>
         </div>
 
-        <div class="reveal float" style="--delay: 0.15s">
-          <div class="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[0_25px_80px_rgba(0,0,0,0.45)]">
-            <div class="mb-3 flex items-center justify-between text-sm text-slate-400">
-              <span>CLI Preview</span>
-              <span class="rounded-full border border-teal-400/30 bg-teal-400/10 px-2 py-0.5 text-xs text-teal-200">agent streaming</span>
+        <div class="preview">
+          <div class="preview-top">
+            <span>CLI Preview</span>
+            <span class="badge">agent streaming</span>
+          </div>
+          <div class="terminal">
+            <div class="term-bar">
+              <span class="dot r"></span>
+              <span class="dot y"></span>
+              <span class="dot g"></span>
+              <span class="ml">chat-tui · ark/doubao-pro</span>
             </div>
-            <div class="overflow-hidden rounded-xl border border-white/10 bg-[#0b0f14]">
-              <div class="flex items-center gap-2 border-b border-white/10 bg-[#11161e] px-3 py-2 text-xs text-slate-400">
-                <span class="h-2.5 w-2.5 rounded-full bg-red-400"></span>
-                <span class="h-2.5 w-2.5 rounded-full bg-amber-300"></span>
-                <span class="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
-                <span class="ml-auto">chat-tui · ark/doubao-pro</span>
-              </div>
-              <div class="space-y-3 p-4 text-sm text-slate-200">
-                <div><span class="font-semibold text-blue-300">USER</span> 用 Ark 豆包总结这段 panic。</div>
-                <div class="status-line">AGENT · streaming · ChatModelAgent + Runner</div>
-                <div class="tool-line">[tool: none] 工具位已预留 · Esc / Stop 可取消</div>
-                <div><span class="font-semibold text-teal-300">ASSISTANT</span> 空指针在 <code>bar()</code>：<code>foo</code> 未判空。先补 guard，再看最近一次部署。</div>
-                <div><span class="font-semibold text-blue-300">USER</span> 换成本地 Ollama 再问一遍？</div>
-                <div><span class="font-semibold text-teal-300">ASSISTANT</span> Settings 里把 provider 切到 ollama，模型填 llama3.2 即可。</div>
-                <div class="text-slate-400">> Type a message (Shift+Enter for new line)...</div>
-              </div>
+            <div class="term-body">
+              <div><span class="user">USER</span> 用 Ark 豆包总结这段 panic。</div>
+              <div class="status-line">AGENT · streaming · ChatModelAgent + Runner</div>
+              <div class="tool-line">[tool: none] 工具位已预留 · Esc / Stop 可取消</div>
+              <div><span class="assistant">ASSISTANT</span> 空指针在 <code>bar()</code>：<code>foo</code> 未判空。先补 guard，再看最近一次部署。</div>
+              <div><span class="user">USER</span> 换成本地 Ollama 再问一遍？</div>
+              <div><span class="assistant">ASSISTANT</span> Settings 里把 provider 切到 ollama，模型填 llama3.2 即可。</div>
+              <div class="prompt">&gt; Type a message (Shift+Enter for new line)...</div>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="features" class="py-14">
-        <h2 class="text-2xl font-semibold">为高效 Agent 聊天而生的终端体验</h2>
-        <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div class="feature-card reveal" style="--delay: 0.05s">
+      <section id="features" class="section">
+        <h2>为高效 Agent 聊天而生的终端体验</h2>
+        <div class="feature-grid">
+          <div class="feature-card">
             <h3>多提供商</h3>
             <p>OpenAI 兼容、Ark、Ollama、Claude、Gemini、Qwen、DeepSeek —— 官方 eino-ext ChatModel，Settings 一键切换。</p>
           </div>
-          <div class="feature-card reveal" style="--delay: 0.1s">
+          <div class="feature-card">
             <h3>Eino Agent 流</h3>
             <p>ChatModelAgent + Runner 消费 AgentEvent：助手增量、tool-call / 多步状态、Esc 取消。</p>
           </div>
-          <div class="feature-card reveal" style="--delay: 0.15s">
+          <div class="feature-card">
             <h3>流式输出</h3>
             <p>打字机般的响应体验，边生成边阅读，告别等待。</p>
           </div>
-          <div class="feature-card reveal" style="--delay: 0.2s">
+          <div class="feature-card">
             <h3>多行输入</h3>
             <p>Shift+Enter 换行，Enter 发送，长文本编辑更自然。</p>
           </div>
-          <div class="feature-card reveal" style="--delay: 0.25s">
+          <div class="feature-card">
             <h3>Copy Mode</h3>
             <p>一键进入复制模式，选中文本并复制到系统剪贴板。</p>
           </div>
-          <div class="feature-card reveal" style="--delay: 0.3s">
+          <div class="feature-card">
             <h3>会话与主题</h3>
             <p>自动保存历史、系统提示、/read 注入文件；夜间与浅色主题都舒适。</p>
           </div>
         </div>
       </section>
 
-      <section class="py-6">
-        <div class="flex flex-wrap gap-2">
+      <section class="section" style="padding-top:0">
+        <div class="chips">
           <span class="chip">openai</span>
           <span class="chip">ark</span>
           <span class="chip">ollama</span>
@@ -121,21 +115,19 @@
         </div>
       </section>
 
-      <section class="grid gap-8 py-14 md:grid-cols-[0.9fr_1.1fr] md:items-center">
-        <div class="reveal" style="--delay: 0.05s">
-          <h2 class="text-2xl font-semibold">真实界面，一目了然</h2>
-          <p class="mt-3 text-slate-300">来自项目内置截图，展示侧边栏、聊天区与操作栏的整体布局。</p>
+      <section class="section shot-grid">
+        <div>
+          <h2>真实界面，一目了然</h2>
+          <p class="sub">来自项目内置截图，展示侧边栏、聊天区与操作栏的整体布局。</p>
         </div>
-        <div class="reveal" style="--delay: 0.15s">
-          <div class="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[0_25px_90px_rgba(0,0,0,0.45)]">
-            <img class="w-full rounded-xl" src="image/%E4%BD%BF%E7%94%A8%E6%88%AA%E5%9B%BE.png" alt="Chat-TUI 截图" />
-          </div>
+        <div class="shot-frame">
+          <img src="image/screenshot.png" alt="Chat-TUI 截图" width="1200" height="800" loading="lazy" />
         </div>
       </section>
 
-      <section id="quickstart" class="py-14">
-        <h2 class="text-2xl font-semibold">一分钟上手</h2>
-        <div class="mt-6 grid gap-4 md:grid-cols-2">
+      <section id="quickstart" class="section">
+        <h2>一分钟上手</h2>
+        <div class="code-grid">
           <div class="code-card">
             <pre><code>go install github.com/evallife/chat-tui/cmd/chat-tui@latest
 chat-tui</code></pre>
@@ -147,12 +139,12 @@ go build -o chat-tui ./cmd/chat-tui
 ./chat-tui</code></pre>
           </div>
         </div>
-        <p class="mt-4 text-sm text-slate-400">首次运行会写入 <code>~/.xftui.json</code>。未填写 provider 时默认 openai，兼容原有 OpenAI 配置。</p>
+        <p class="note">首次运行会写入 <code>~/.xftui.json</code>。未填写 provider 时默认 openai，兼容原有 OpenAI 配置。当前带 Eino 的版本在 main；发版标签更新前请优先从源码构建。</p>
       </section>
 
-      <section id="shortcuts" class="py-14">
-        <h2 class="text-2xl font-semibold">快捷键速查</h2>
-        <div class="mt-4 flex flex-wrap gap-2">
+      <section id="shortcuts" class="section">
+        <h2>快捷键速查</h2>
+        <div class="chips" style="margin-top:1rem">
           <span class="chip">Ctrl+N 新建对话</span>
           <span class="chip">Ctrl+H 历史记录</span>
           <span class="chip">Ctrl+S 设置中心</span>
@@ -165,47 +157,32 @@ go build -o chat-tui ./cmd/chat-tui
         </div>
       </section>
 
-      <section id="themes" class="py-14">
-        <h2 class="text-2xl font-semibold">主题预设</h2>
-        <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div class="theme-card night reveal" style="--delay: 0.05s">
-            <div class="swatch"></div>
-            <div class="label">Night</div>
-          </div>
-          <div class="theme-card nord reveal" style="--delay: 0.1s">
-            <div class="swatch"></div>
-            <div class="label">Nord</div>
-          </div>
-          <div class="theme-card gruvbox reveal" style="--delay: 0.15s">
-            <div class="swatch"></div>
-            <div class="label">Gruvbox</div>
-          </div>
-          <div class="theme-card solarized reveal" style="--delay: 0.2s">
-            <div class="swatch"></div>
-            <div class="label">Solarized Dark</div>
-          </div>
-          <div class="theme-card light reveal" style="--delay: 0.25s">
-            <div class="swatch"></div>
-            <div class="label">Light</div>
-          </div>
+      <section id="themes" class="section">
+        <h2>主题预设</h2>
+        <div class="theme-grid">
+          <div class="theme-card night"><div class="swatch"></div><div class="label">Night</div></div>
+          <div class="theme-card nord"><div class="swatch"></div><div class="label">Nord</div></div>
+          <div class="theme-card gruvbox"><div class="swatch"></div><div class="label">Gruvbox</div></div>
+          <div class="theme-card solarized"><div class="swatch"></div><div class="label">Solarized Dark</div></div>
+          <div class="theme-card light"><div class="swatch"></div><div class="label">Light</div></div>
         </div>
       </section>
 
-      <section class="py-16">
-        <div class="rounded-2xl border border-white/10 bg-white/5 p-6 md:flex md:items-center md:justify-between">
+      <section class="section">
+        <div class="cta">
           <div>
-            <h2 class="text-2xl font-semibold">准备好在终端里跑 Agent 了吗？</h2>
-            <p class="mt-2 text-slate-300">开箱即用，轻量快速。一套 TUI，多模型、可流式、可取消。</p>
+            <h2>准备好在终端里跑 Agent 了吗？</h2>
+            <p>开箱即用，轻量快速。一套 TUI，多模型、可流式、可取消。</p>
           </div>
-          <div class="mt-4 flex gap-3 md:mt-0">
-            <a class="rounded-full bg-gradient-to-br from-[#5ce0d8] to-sky-400 px-5 py-2 text-sm font-semibold text-slate-900" href="https://github.com/evallife/chat-tui">查看仓库</a>
-            <a class="rounded-full border border-white/20 px-5 py-2 text-sm font-semibold hover:border-white/40" href="https://github.com/evallife/chat-tui/releases">下载发布版</a>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="https://github.com/evallife/chat-tui">查看仓库</a>
+            <a class="btn btn-ghost" href="https://github.com/evallife/chat-tui/releases">下载发布版</a>
           </div>
         </div>
       </section>
     </main>
 
-    <footer class="flex flex-col gap-2 border-t border-white/10 px-6 py-8 text-sm text-slate-400 md:flex-row md:justify-between">
+    <footer class="wrap site-footer">
       <span>Powered by Eino · tview · glamour</span>
       <span>© Chat‑TUI</span>
     </footer>
