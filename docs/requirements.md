@@ -61,7 +61,7 @@
 
 | ID | 需求 | 说明 |
 |----|------|------|
-| R-20 | 危险工具 HITL | 写文件 / 跑命令前 TUI 确认 |
+| R-20 | 危险工具 HITL | **已实现**：`write_file` / `run_command` 执行前 TUI Allow/Deny |
 | R-21 | 会话笔记记忆 | 跨会话短笔记注入 Instruction |
 | R-22 | Checkpoint / Resume | Eino Store + CheckpointID |
 | R-23 | DeepAgent / 子代理 | 调研 / 编码分工 |

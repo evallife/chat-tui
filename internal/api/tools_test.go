@@ -201,6 +201,83 @@ func TestGlobAndSearchBasic(t *testing.T) {
 	}
 }
 
+type denyConfirm struct{}
+
+func (denyConfirm) ConfirmTool(context.Context, string, string) error {
+	return ErrToolDenied
+}
+
+type allowConfirm struct{ calls int }
+
+func (a *allowConfirm) ConfirmTool(context.Context, string, string) error {
+	a.calls++
+	return nil
+}
+
+func TestWriteFileConfirmerDenyAndAllow(t *testing.T) {
+	dir := t.TempDir()
+	env := &toolEnv{root: dir, confirm: denyConfirm{}}
+	wt, err := newWriteFileTool(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wt.InvokableRun(context.Background(), `{"path":"x.txt","content":"nope"}`); err == nil {
+		t.Fatal("expected deny")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "x.txt")); !os.IsNotExist(err) {
+		t.Fatalf("denied write should not create file, stat err=%v", err)
+	}
+
+	allow := &allowConfirm{}
+	env.confirm = allow
+	out, err := wt.InvokableRun(context.Background(), `{"path":"x.txt","content":"ok"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allow.calls != 1 {
+		t.Fatalf("confirm calls=%d", allow.calls)
+	}
+	if !contains(out, "x.txt") {
+		t.Fatalf("write output: %s", out)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "x.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "ok" {
+		t.Fatalf("content=%q", data)
+	}
+}
+
+func TestRunCommandConfirmerDeny(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "ran.txt")
+	env := &toolEnv{root: dir, confirm: denyConfirm{}}
+	rt, err := newRunCommandTool(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd, _ := json.Marshal(map[string]string{"command": "touch ran.txt"})
+	if _, err := rt.InvokableRun(context.Background(), string(cmd)); err == nil {
+		t.Fatal("expected deny")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("denied command should not run")
+	}
+}
+
+func TestNilConfirmerAllowsWrite(t *testing.T) {
+	dir := t.TempDir()
+	env := &toolEnv{root: dir}
+	wt, err := newWriteFileTool(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wt.InvokableRun(context.Background(), `{"path":"ok.txt","content":"x"}`); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestNormalizeAgentDefaults(t *testing.T) {
 	cfg := types.Config{}
 	cfg.Normalize()

@@ -1,3 +1,8 @@
+# Local build artifacts
+/chat-tui
+/chat-tui.exe
+/main.exe
 /xftui
 /xftui.exe
+*.exe
 /dist/

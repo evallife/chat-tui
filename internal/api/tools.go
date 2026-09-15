@@ -33,7 +33,12 @@ const (
 
 // extraTools is the ReAct tool set for ChatModelAgent, filtered by cfg policy.
 func extraTools(cfg types.Config) []tool.BaseTool {
+	return extraToolsFor(cfg, nil)
+}
+
+func extraToolsFor(cfg types.Config, confirm ToolConfirmer) []tool.BaseTool {
 	env := newToolEnv(cfg)
+	env.confirm = confirm
 	builders := []func(*toolEnv) (tool.InvokableTool, error){
 		newGetCurrentTimeTool,
 		newGetWorkingDirectoryTool,
@@ -229,6 +234,9 @@ func newWriteFileTool(env *toolEnv) (tool.InvokableTool, error) {
 			if err != nil {
 				return writeFileOutput{}, err
 			}
+			if err := env.confirmOrAllow(ctx, "write_file", fmt.Sprintf("path=%s append=%v bytes=%d", abs, in.Append, len(in.Content))); err != nil {
+				return writeFileOutput{}, err
+			}
 			if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 				return writeFileOutput{}, err
 			}
@@ -328,6 +336,9 @@ func newRunCommandTool(env *toolEnv) (tool.InvokableTool, error) {
 			cmdLine := strings.TrimSpace(in.Command)
 			if cmdLine == "" {
 				return runCommandOutput{}, fmt.Errorf("command is required")
+			}
+			if err := env.confirmOrAllow(ctx, "run_command", fmt.Sprintf("cwd=%s\n%s", root, cmdLine)); err != nil {
+				return runCommandOutput{}, err
 			}
 			cctx, cancel := context.WithTimeout(ctx, cmdTimeout)
 			defer cancel()

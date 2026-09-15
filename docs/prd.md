@@ -26,8 +26,8 @@ flowchart LR
 |------|------|------|------|
 | MaxIterations | `max_iterations` | 20 | 模型生成轮次上限 |
 | WorkspaceRoot | `workspace_root` | `""` → cwd | 工具沙箱根 |
-| EnableWriteFile | `enable_write_file` | true | 是否注册 write_file |
-| EnableRunCommand | `enable_run_command` | true | 是否注册 run_command |
+| DisableWriteFile | `disable_write_file` | false | true 时不注册 write_file |
+| DisableRunCommand | `disable_run_command` | false | true 时不注册 run_command |
 | AgentName | `agent_name` | `chat-tui` | ADK Name |
 | UseDefaultInstruction | `use_default_instruction` | true | system 空时注入默认指令 |
 
@@ -56,6 +56,7 @@ flowchart LR
 - Settings 增加：Max Iterations、Workspace Root、Enable Write File、Enable Run Command（checkbox）。
 - `/agent`：状态摘要；`/tools` 反映实际启用列表；`/help` 更新。
 - `/config` 带上新字段。
+- `write_file` / `run_command` 执行前 TUI Allow/Deny（HITL）。
 
 ### 3.5 文档与版本
 
@@ -90,6 +91,7 @@ flowchart LR
 
 ## 7. 决策记录
 
-- **不做**本轮 HITL / DeepAgent：复杂度高，先把单 Agent 做稳。
+- **HITL 已落地**：`write_file` / `run_command` 经 `ToolConfirmer` 在 TUI 确认；无 confirmer 时（单测）默认允许。
+- **不做**本轮 DeepAgent：复杂度高，先把单 Agent 做稳。
 - **ExitTool 默认开**：通用 Agent 惯例；代价低。
 - **默认 Instruction 英文为主**：兼容各模型；可后续本地化。

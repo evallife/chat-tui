@@ -16,7 +16,8 @@ import (
 
 // Client runs chat through an Eino ChatModelAgent + Runner.
 type Client struct {
-	config types.Config
+	config  types.Config
+	confirm ToolConfirmer
 }
 
 func NewClient(cfg types.Config) *Client {
@@ -27,6 +28,10 @@ func NewClient(cfg types.Config) *Client {
 func (c *Client) UpdateConfig(cfg types.Config) {
 	cfg.Normalize()
 	c.config = cfg
+}
+
+func (c *Client) SetConfirmer(confirm ToolConfirmer) {
+	c.confirm = confirm
 }
 
 func (c *Client) Config() types.Config {
@@ -75,7 +80,7 @@ func (c *Client) StreamAgent(ctx context.Context, instruction string, history []
 		Exit:          adk.ExitTool{},
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools: extraTools(c.config),
+				Tools: extraToolsFor(c.config, c.confirm),
 			},
 		},
 	})

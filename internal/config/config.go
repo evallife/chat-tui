@@ -14,7 +14,7 @@ func GetConfigPath() string {
 	return filepath.Join(home, ".xftui.json")
 }
 
-func defaultConfig() types.Config {
+func DefaultConfig() types.Config {
 	cfg := types.Config{
 		Provider: types.ProviderOpenAI,
 		BaseURL:  "https://api.openai.com/v1",
@@ -29,7 +29,7 @@ func LoadConfig() (types.Config, error) {
 	path := GetConfigPath()
 	file, err := os.ReadFile(path)
 	if err != nil {
-		return defaultConfig(), err
+		return DefaultConfig(), err
 	}
 	var cfg types.Config
 	if err := json.Unmarshal(file, &cfg); err != nil {
@@ -37,6 +37,24 @@ func LoadConfig() (types.Config, error) {
 	}
 	cfg.Normalize()
 	return cfg, nil
+}
+
+// LoadOrCreate loads ~/.xftui.json, or writes DefaultConfig and returns it.
+// created is true when the file did not exist. A non-nil error with created=true
+// means the default was returned in-memory but could not be persisted.
+func LoadOrCreate() (cfg types.Config, created bool, err error) {
+	cfg, err = LoadConfig()
+	if err == nil {
+		return cfg, false, nil
+	}
+	if !os.IsNotExist(err) {
+		return types.Config{}, false, err
+	}
+	cfg = DefaultConfig()
+	if err := SaveConfig(cfg); err != nil {
+		return cfg, true, err
+	}
+	return cfg, true, nil
 }
 
 func SaveConfig(cfg types.Config) error {

@@ -13,6 +13,7 @@
 - 🔌 **多提供商**：通过 Eino 官方 `eino-ext` ChatModel 接入 OpenAI 兼容接口、Ark（火山引擎）、Ollama、Claude（Anthropic）、Gemini（Google）、Qwen（DashScope）、DeepSeek。
 - 🧠 **Eino Agent（P0 通用 Agent）**：`ChatModelAgent` + `Runner` 流式执行；默认编程助手 Instruction、可配置 `max_iterations`、`ExitTool`、工作区沙箱（`workspace_root`）、可关闭 `write_file` / `run_command`；工具含 time/cwd/list/read/write/http_get/run_command/`glob_files`/`search_text`/`make_directory`。详见 [`docs/requirements.md`](docs/requirements.md) 与 [`docs/prd.md`](docs/prd.md)。
 - 🌊 **流式交互**：助手文本增量渲染；出现 tool-call / 多步状态时在聊天区提示。`Esc` 或底部 **Stop** 取消进行中的 run。
+- 🛡️ **危险工具确认**：`write_file` / `run_command` 执行前弹出 Allow/Deny；拒绝后工具返回错误，Agent 不会改文件或跑命令。
 - 💬 **多行输入**：输入框支持多行编辑，`Shift+Enter` 换行，`Enter` 发送。
 - 📋 **安全粘贴**：支持括号粘贴（bracketed paste），多行粘贴不会被拆成多次发送。
 - 🧾 **复制模式**：一键进入 Copy Mode，支持选中文本并复制到系统剪贴板。
@@ -54,6 +55,8 @@ go build -o chat-tui ./cmd/chat-tui
 
 ### 环境要求
 - **Go**: 1.25+
+
+首次运行会在 `~/.xftui.json` 写入默认配置（`api_key` 为空）并直接进入 TUI。在 **Settings**（`Ctrl+S`）里填凭据后 Save 即可，不必再重启。
 
 ---
 
@@ -108,7 +111,7 @@ Agent 相关字段也可在 Settings 中修改；`/agent` 查看运行参数与�
 TUI (tview)  ──messages (go-openai types in SQLite)──►  api.Client
                                                           │
                                                           ├─ NewChatModel(provider)
-                                                          ├─ adk.NewChatModelAgent (tools: extraTools())
+                                                          ├─ adk.NewChatModelAgent (tools: extraToolsFor + HITL)
                                                           └─ adk.NewRunner(EnableStreaming)
                                                                 │
                                                                 ▼
@@ -116,7 +119,7 @@ TUI (tview)  ──messages (go-openai types in SQLite)──►  api.Client
                                                           (text deltas / tool status)
 ```
 
-存储与 UI 仍使用 `openai.ChatCompletionMessage`；在 `internal/api` 边界转换成 Eino `schema.Message`。工具由 `extraTools(cfg)` 按策略与工作区沙箱组装；继续扩展只需追加 `tool.BaseTool`，无需改 Runner 路径。
+存储与 UI 仍使用 `openai.ChatCompletionMessage`；在 `internal/api` 边界转换成 Eino `schema.Message`。工具由 `extraToolsFor(cfg, confirmer)` 按策略、工作区沙箱与 HITL 确认组装；继续扩展只需追加 `tool.BaseTool`，无需改 Runner 路径。
 
 ---
 
@@ -155,7 +158,7 @@ TUI (tview)  ──messages (go-openai types in SQLite)──►  api.Client
 在聊天输入框内输入：
 - `/read <path>`：读取指定路径的文件内容并发送给 AI（例如：`/read ./cmd/chat-tui/main.go`）。
 - `/tools`：列出当前启用的 Agent 工具。
-- `/agent`：显示 Instruction 摘要、迭代上限、工作区与工具策略。
+- `/agent`：显示 Instruction 摘要、迭代上限、工作区、工具策略与 HITL 确认。
 - `/config`：显示当前 provider / model / agent 配置。
 - `/help`：指令与快捷键一览。
 

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,13 +11,35 @@ import (
 	"github.com/evallife/chat-tui/internal/types"
 )
 
+// ErrToolDenied is returned when a mutating tool is rejected by ToolConfirmer.
+var ErrToolDenied = errors.New("tool execution denied")
+
+// ToolConfirmer is asked before write_file / run_command. A nil confirmer allows.
+type ToolConfirmer interface {
+	ConfirmTool(ctx context.Context, name, detail string) error
+}
+
 // toolEnv carries workspace sandbox settings for FS/shell tools.
 type toolEnv struct {
-	root string
+	root    string
+	confirm ToolConfirmer
 }
 
 func newToolEnv(cfg types.Config) *toolEnv {
 	return &toolEnv{root: workspaceRoot(cfg)}
+}
+
+func (env *toolEnv) confirmOrAllow(ctx context.Context, name, detail string) error {
+	if env == nil || env.confirm == nil {
+		return nil
+	}
+	if err := env.confirm.ConfirmTool(ctx, name, detail); err != nil {
+		if errors.Is(err, ErrToolDenied) {
+			return err
+		}
+		return fmt.Errorf("%w: %v", ErrToolDenied, err)
+	}
+	return nil
 }
 
 // workspaceRoot returns the absolute sandbox root. Empty WorkspaceRoot → cwd.

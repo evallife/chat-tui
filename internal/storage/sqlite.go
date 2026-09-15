@@ -13,48 +13,59 @@ import (
 )
 
 type Manager struct {
-	db *sql.DB
+	db   *sql.DB
+	path string
+}
+
+func DefaultDBPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".xftui.db")
 }
 
 func NewManager() (*Manager, error) {
-	home, _ := os.UserHomeDir()
-	dbPath := filepath.Join(home, ".xftui.db")
+	return Open(DefaultDBPath())
+}
+
+func Open(dbPath string) (*Manager, error) {
+	if dbPath != ":memory:" {
+		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil && !os.IsExist(err) {
+			return nil, fmt.Errorf("create database directory %s: %w", filepath.Dir(dbPath), err)
+		}
+	}
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open database %s: %w", dbPath, err)
 	}
-
-	// Create tables
-	query := `
-	CREATE TABLE IF NOT EXISTS conversations (
-		id TEXT PRIMARY KEY,
-		title TEXT,
-		model TEXT,
-		system_prompt TEXT,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	);
-	CREATE TABLE IF NOT EXISTS messages (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		conversation_id TEXT,
-		role TEXT,
-		content TEXT,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(conversation_id) REFERENCES conversations(id)
-	);
-	CREATE TABLE IF NOT EXISTS system_prompts (
-		id TEXT PRIMARY KEY,
-		name TEXT,
-		content TEXT
-	);`
-	_, err = db.Exec(query)
-	if err != nil {
-		return nil, fmt.Errorf("create tables: %w", err)
+	if _, err := db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("enable foreign keys: %w", err)
 	}
+	if err := migrate(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate database %s: %w", dbPath, err)
+	}
+	return &Manager{db: db, path: dbPath}, nil
+}
 
-	// Migrate if needed
-	_, _ = db.Exec("ALTER TABLE conversations ADD COLUMN system_prompt TEXT")
+func (m *Manager) Close() error {
+	if m == nil || m.db == nil {
+		return nil
+	}
+	return m.db.Close()
+}
 
-	return &Manager{db: db}, nil
+func (m *Manager) Path() string {
+	if m == nil {
+		return ""
+	}
+	return m.path
+}
+
+func (m *Manager) SchemaVersion() (int, error) {
+	if m == nil || m.db == nil {
+		return 0, fmt.Errorf("database not open")
+	}
+	return currentVersion(m.db)
 }
 
 func (m *Manager) CreateConversation(title, modelName, systemPrompt string) (string, error) {
@@ -89,6 +100,9 @@ func (m *Manager) GetMessages(convID string) ([]openai.ChatCompletionMessage, er
 		}
 		msgs = append(msgs, msg)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate messages: %w", err)
+	}
 	return msgs, nil
 }
 
@@ -112,12 +126,15 @@ func (m *Manager) ListConversations() ([]ConvSummary, error) {
 		}
 		convs = append(convs, c)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate conversations: %w", err)
+	}
 	return convs, nil
 }
 
 func (m *Manager) GetConversation(id string) (types.Conversation, error) {
 	var c types.Conversation
-	err := m.db.QueryRow("SELECT id, title, model, system_prompt FROM conversations WHERE id = ?", id).
+	err := m.db.QueryRow("SELECT id, title, model, COALESCE(system_prompt, '') FROM conversations WHERE id = ?", id).
 		Scan(&c.ID, &c.Title, &c.Model, &c.SystemPrompt)
 	if err != nil {
 		return c, fmt.Errorf("get conversation %s: %w", id, err)
@@ -139,19 +156,31 @@ func (m *Manager) ListSystemPrompts() ([]types.SystemPrompt, error) {
 		}
 		prompts = append(prompts, p)
 	}
-	// Add default ones if empty
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate system prompts: %w", err)
+	}
 	if len(prompts) == 0 {
-		defaults := []types.SystemPrompt{
-			{ID: "default", Name: "Default Chat", Content: ""},
-			{ID: "translator", Name: "Translator (ZH-EN)", Content: "You are a professional translator. Translate between Chinese and English."},
-			{ID: "coder", Name: "Code Expert", Content: "You are an expert software engineer. Provide concise and accurate code solutions."},
-		}
-		for _, p := range defaults {
-			_, _ = m.db.Exec("INSERT INTO system_prompts (id, name, content) VALUES (?, ?, ?)", p.ID, p.Name, p.Content)
+		defaults, err := m.seedDefaultPrompts()
+		if err != nil {
+			return nil, err
 		}
 		return defaults, nil
 	}
 	return prompts, nil
+}
+
+func (m *Manager) seedDefaultPrompts() ([]types.SystemPrompt, error) {
+	defaults := []types.SystemPrompt{
+		{ID: "default", Name: "Default Chat", Content: ""},
+		{ID: "translator", Name: "Translator (ZH-EN)", Content: "You are a professional translator. Translate between Chinese and English."},
+		{ID: "coder", Name: "Code Expert", Content: "You are an expert software engineer. Provide concise and accurate code solutions."},
+	}
+	for _, p := range defaults {
+		if _, err := m.db.Exec("INSERT INTO system_prompts (id, name, content) VALUES (?, ?, ?)", p.ID, p.Name, p.Content); err != nil {
+			return nil, fmt.Errorf("seed system prompt %s: %w", p.ID, err)
+		}
+	}
+	return defaults, nil
 }
 
 func (m *Manager) SaveSystemPrompt(p types.SystemPrompt) error {
