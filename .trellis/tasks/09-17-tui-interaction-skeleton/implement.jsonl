@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/09-17-tui-interaction-skeleton/research/current-key-routing.md", "reason": "Current Esc/global-capture bugs and chrome layout evidence"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Extract key policy instead of duplicating Esc branches"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Project quality/testing expectations"}
