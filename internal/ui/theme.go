@@ -114,4 +114,8 @@ func (ui *TViewUI) applyTheme(themeKey string) {
 	if ui.HistoryPreview != nil {
 		ui.HistoryPreview.SetTitleColor(theme.Title)
 	}
+	if ui.StatusBar != nil {
+		ui.StatusBar.SetTextColor(theme.Tertiary)
+		ui.StatusBar.SetBackgroundColor(theme.InputBg)
+	}
 }

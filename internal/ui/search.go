@@ -109,9 +109,8 @@ func (ui *TViewUI) clearSearch() {
 	ui.searchIdx = 0
 
 	ui.mountChat(false)
-	ui.ChatView.SetTitle(" Chat History ")
 	ui.refreshChat()
-	ui.App.SetFocus(ui.InputField)
+	ui.focusChatInput()
 }
 
 func (ui *TViewUI) searchNext() {

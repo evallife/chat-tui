@@ -75,6 +75,5 @@ func (ui *TViewUI) showCopyMode() {
 }
 
 func (ui *TViewUI) hideCopyMode() {
-	ui.Pages.SwitchToPage("chat")
-	ui.App.SetFocus(ui.InputField)
+	ui.focusChatInput()
 }

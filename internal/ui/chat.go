@@ -26,15 +26,25 @@ func (ui *TViewUI) setupChatView() {
 		SetLabel("> ").
 		SetPlaceholder("Type a message (Shift+Enter for new line)...")
 	ui.InputField.SetSize(3, 0)
+	ui.InputField.SetChangedFunc(func() {
+		ui.syncInputHeight()
+	})
 	ui.InputField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Modifiers() == 0 {
 			switch event.Key() {
 			case tcell.KeyUp:
-				ui.navigateHistory(-1)
-				return nil
+				fromRow, _, _, _ := ui.InputField.GetCursor()
+				if recallHistoryOnUp(fromRow) {
+					ui.navigateHistory(-1)
+					return nil
+				}
+				return event
 			case tcell.KeyDown:
-				ui.navigateHistory(1)
-				return nil
+				if recallHistoryOnDown(ui.historyIndex) {
+					ui.navigateHistory(1)
+					return nil
+				}
+				return event
 			case tcell.KeyEnter:
 				if ui.isProcessingInput || ui.isStreaming {
 					return nil
@@ -154,14 +164,16 @@ func (ui *TViewUI) streamAgentResponse() {
 		ui.streamCancel = nil
 		ui.App.QueueUpdateDraw(func() {
 			ui.InputField.SetTitle(" Input (Enter to send, Shift+Enter for new line) ")
+			ui.refreshStatus()
 		})
 	}()
 
 	provider := ui.config.CanonicalProvider()
 	ui.App.QueueUpdateDraw(func() {
-		ui.InputField.SetTitle(" Input (Esc / Stop to cancel agent) ")
+		ui.InputField.SetTitle(" Input (Esc to cancel) ")
 		ui.ChatView.SetTitle(fmt.Sprintf(" Chat History · %s/%s · streaming ", provider, ui.config.Model))
 		fmt.Fprintf(ui.ChatView, "\n[green][b]ASSISTANT[-][/b]\n")
+		ui.refreshStatus()
 	})
 
 	fullResponse, err := ui.apiClient.StreamAgent(ctx, ui.systemPrompt, ui.messages, func(ev api.Event) {

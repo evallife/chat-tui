@@ -113,11 +113,11 @@ func (ui *TViewUI) rebuildSettingsForm() {
 		ui.apiClient.UpdateConfig(ui.config)
 		ui.applyTheme(ui.config.Theme)
 		ui.refreshChat()
-		ui.Pages.SwitchToPage("chat")
-		ui.App.SetFocus(ui.InputField)
+		ui.refreshStatus()
+		ui.focusChatInput()
 	}).
 		AddButton("Cancel", func() {
-			ui.Pages.SwitchToPage("chat")
+			ui.focusChatInput()
 		})
 	form.SetBorder(true).SetTitle(" Settings — Eino multi-provider agent ")
 	form.SetTitleColor(tview.Styles.TitleColor)

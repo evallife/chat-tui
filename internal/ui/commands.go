@@ -116,7 +116,13 @@ func (ui *TViewUI) handleCommand(input string) {
   /config        Show current settings
   /help          Show this help
 
-While streaming: Esc or Stop cancels the agent.
+Keys:
+  Esc            Dismiss overlay / stop stream (idle chat: no-op)
+  Ctrl+C         Quit confirm (Copy Mode: copy)
+  Ctrl+N/H/S/B   New / History / Settings / Menu
+  Enter          Send    Shift+Enter  Newline
+
+While streaming: Esc cancels the agent.
 Tool calls appear inline as ⚙ tool:<name>.
 write_file and run_command require Allow/Deny before they run.
 `)
@@ -164,21 +170,21 @@ func (ui *TViewUI) showExportDialog() {
 		filename = text
 	})
 
+	closeExport := func() {
+		ui.Pages.RemovePage("export-dialog")
+		ui.focusChatIfFront()
+	}
+
 	form.AddButton("Export", func() {
 		if filename == "" {
 			filename = defaultFilename
 		}
 		ui.exportToFile(filename)
-		ui.Pages.RemovePage("export-dialog")
+		closeExport()
 	})
 
-	form.AddButton("Cancel", func() {
-		ui.Pages.RemovePage("export-dialog")
-	})
-
-	form.SetCancelFunc(func() {
-		ui.Pages.RemovePage("export-dialog")
-	})
+	form.AddButton("Cancel", closeExport)
+	form.SetCancelFunc(closeExport)
 
 	modal := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).

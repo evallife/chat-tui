@@ -17,7 +17,7 @@ func (ui *TViewUI) setupHistoryView() {
 
 	ui.HistoryList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEsc {
-			ui.Pages.SwitchToPage("chat")
+			ui.focusChatInput()
 			return nil
 		}
 		if event.Key() == tcell.KeyDelete || event.Rune() == 'd' {
@@ -112,7 +112,7 @@ func (ui *TViewUI) loadConversation(id string) {
 	}
 	ui.messages = msgs
 	ui.refreshChat()
-	ui.Pages.SwitchToPage("chat")
+	ui.focusChatInput()
 }
 
 func (ui *TViewUI) showHistory() {
@@ -138,7 +138,7 @@ func (ui *TViewUI) buildHistoryBar() *tview.Flex {
 	bar := tview.NewFlex().SetDirection(tview.FlexColumn)
 	bar.SetBorder(true).SetTitle(" History Actions ")
 	bar.AddItem(ui.makeButton("Delete", ui.confirmDeleteSelected), 0, 1, false)
-	bar.AddItem(ui.makeButton("Back", func() { ui.Pages.SwitchToPage("chat") }), 0, 1, false)
+	bar.AddItem(ui.makeButton("Back", ui.focusChatInput), 0, 1, false)
 	return bar
 }
 

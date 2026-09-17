@@ -14,47 +14,87 @@ func (ui *TViewUI) setupSidebar() {
 		AddItem("History", "Load past chats", 'h', ui.showHistory).
 		AddItem("Settings", "Provider + credentials", 's', ui.showSettings).
 		AddItem("System Prompts", "Change AI role", 'p', ui.showSystemPrompts).
-		AddItem("Quit", "Exit app", 'q', func() { ui.App.Stop() })
+		AddItem("Quit", "Exit app", 'q', ui.confirmQuit)
 
 	ui.Sidebar.SetBorder(true).SetTitle(" Menu ")
 	ui.Sidebar.SetTitleColor(tview.Styles.TitleColor)
 }
 
-func (ui *TViewUI) chatColumn(withSearch bool) tview.Primitive {
-	if withSearch {
-		searchFlex := tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(ui.searchInput, 1, 0, true).
-			AddItem(ui.ChatView, 0, 1, false).
-			AddItem(ui.InputField, 3, 1, false)
-		searchFlex.SetBorder(true).SetTitle(" Chat History ")
-		return searchFlex
+func (ui *TViewUI) setupStatusBar() {
+	ui.StatusBar = tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(false).
+		SetTextAlign(tview.AlignLeft)
+	ui.StatusBar.SetBorder(false)
+	ui.StatusBar.SetTextColor(tview.Styles.TertiaryTextColor)
+	ui.StatusBar.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
+	ui.refreshStatus()
+}
+
+func (ui *TViewUI) refreshStatus() {
+	if ui.StatusBar == nil {
+		return
 	}
-	footer := ui.buildFooterBar()
-	return tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(ui.ChatView, 0, 1, false).
-		AddItem(ui.InputField, 3, 1, true).
-		AddItem(footer, 3, 1, false)
+	ui.StatusBar.SetText(statusLine(
+		ui.config.CanonicalProvider(),
+		ui.config.Model,
+		ui.isStreaming,
+		ui.sidebarVisible,
+	))
+}
+
+func (ui *TViewUI) chatColumn(withSearch bool) tview.Primitive {
+	col := tview.NewFlex().SetDirection(tview.FlexRow)
+	if withSearch {
+		col.AddItem(ui.searchInput, 1, 0, true)
+	}
+	col.AddItem(ui.ChatView, 0, 1, false)
+	h := 3
+	if ui.InputField != nil {
+		h = inputHeight(ui.InputField.GetText())
+	}
+	col.AddItem(ui.InputField, h, 0, !withSearch)
+	if ui.StatusBar != nil {
+		col.AddItem(ui.StatusBar, 1, 0, false)
+	}
+	ui.chatColumnFlex = col
+	return col
 }
 
 func (ui *TViewUI) mountChat(withSearch bool) {
-	ui.MainFlex = tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(ui.Sidebar, 20, 1, false).
-		AddItem(ui.chatColumn(withSearch), 0, 4, true)
+	ui.MainFlex = tview.NewFlex().SetDirection(tview.FlexColumn)
+	if ui.sidebarVisible {
+		ui.MainFlex.AddItem(ui.Sidebar, 20, 1, false)
+	}
+	ui.MainFlex.AddItem(ui.chatColumn(withSearch), 0, 4, true)
 	ui.Pages.AddPage("chat", ui.MainFlex, true, true)
 	ui.Pages.SwitchToPage("chat")
+	ui.refreshStatus()
 }
 
 func (ui *TViewUI) toggleSidebar() {
-	if _, item := ui.MainFlex.GetItem(0).(*tview.List); item {
-		ui.MainFlex.RemoveItem(ui.Sidebar)
+	ui.sidebarVisible = !ui.sidebarVisible
+	ui.mountChat(ui.searchActive)
+	switch {
+	case ui.sidebarVisible:
+		ui.App.SetFocus(ui.Sidebar)
+	case ui.searchActive:
+		ui.App.SetFocus(ui.searchInput)
+	default:
+		ui.focusChatInput()
+	}
+	ui.refreshStatus()
+}
+
+func (ui *TViewUI) syncInputHeight() {
+	if ui.InputField == nil {
 		return
 	}
-	oldFlex := ui.MainFlex
-	ui.MainFlex = tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(ui.Sidebar, 20, 1, false).
-		AddItem(oldFlex.GetItem(0), 0, 4, true)
-	ui.Pages.AddPage("chat", ui.MainFlex, true, true)
-	ui.Pages.SwitchToPage("chat")
+	h := inputHeight(ui.InputField.GetText())
+	ui.InputField.SetSize(h, 0)
+	if ui.chatColumnFlex != nil {
+		ui.chatColumnFlex.ResizeItem(ui.InputField, h, 0)
+	}
 }
 
 func (ui *TViewUI) makeButton(label string, action func()) *tview.Button {
@@ -67,25 +107,11 @@ func (ui *TViewUI) makeButton(label string, action func()) *tview.Button {
 	return btn
 }
 
-func (ui *TViewUI) buildFooterBar() *tview.Flex {
-	bar := tview.NewFlex().SetDirection(tview.FlexColumn)
-	bar.SetBorder(true).SetTitle(" Actions ")
-	bar.AddItem(ui.makeButton("New", ui.newConversation), 0, 1, false)
-	bar.AddItem(ui.makeButton("History", ui.showHistory), 0, 1, false)
-	bar.AddItem(ui.makeButton("Export", ui.exportHistory), 0, 1, false)
-	bar.AddItem(ui.makeButton("Copy", ui.showCopyMode), 0, 1, false)
-	bar.AddItem(ui.makeButton("Prompts", ui.showSystemPrompts), 0, 1, false)
-	bar.AddItem(ui.makeButton("Settings", ui.showSettings), 0, 1, false)
-	bar.AddItem(ui.makeButton("Stop", ui.stopStreaming), 0, 1, false)
-	bar.AddItem(ui.makeButton("Quit", func() { ui.App.Stop() }), 0, 1, false)
-	return bar
-}
-
 func (ui *TViewUI) newConversation() {
 	ui.messages = []openai.ChatCompletionMessage{}
 	ui.convID = ""
 	ui.ChatView.Clear()
-	ui.Pages.SwitchToPage("chat")
+	ui.focusChatInput()
 	ui.appendSystemMsg(fmt.Sprintf("New conversation started. (provider=%s model=%s prompt=%s)",
 		ui.config.CanonicalProvider(), ui.config.Model, ui.systemPrompt))
 }
@@ -101,7 +127,9 @@ func (ui *TViewUI) confirmQuit() {
 			ui.Pages.RemovePage("confirm-quit")
 			if buttonLabel == "Quit" {
 				ui.App.Stop()
+				return
 			}
+			ui.focusChatIfFront()
 		})
 
 	ui.Pages.AddPage("confirm-quit", modal, true, true)

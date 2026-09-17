@@ -32,7 +32,7 @@ func (ui *TViewUI) showSystemPrompts() {
 			ui.systemPrompt = pCopy.Content
 			ui.appendSystemMsg(fmt.Sprintf("System prompt set to: %s", pCopy.Name))
 			ui.Pages.RemovePage("system_prompts_mgr")
-			ui.Pages.SwitchToPage("chat")
+			ui.focusChatInput()
 		})
 	}
 
@@ -57,7 +57,7 @@ func (ui *TViewUI) showSystemPrompts() {
 		switch event.Key() {
 		case tcell.KeyEsc:
 			ui.Pages.RemovePage("system_prompts_mgr")
-			ui.Pages.SwitchToPage("chat")
+			ui.focusChatInput()
 			return nil
 		}
 		return event

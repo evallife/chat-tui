@@ -26,8 +26,11 @@ type TViewUI struct {
 	SettingsForm   *tview.Form
 	CopyView       *tview.TextArea
 
-	Sidebar  *tview.List
-	MainFlex *tview.Flex
+	Sidebar        *tview.List
+	MainFlex       *tview.Flex
+	chatColumnFlex *tview.Flex
+	StatusBar      *tview.TextView
+	sidebarVisible bool
 
 	config       types.Config
 	storage      *storage.Manager
@@ -89,6 +92,7 @@ func NewTViewUI(cfg types.Config, store *storage.Manager) *TViewUI {
 	ui.setupHistoryView()
 	ui.setupSettingsView()
 	ui.setupSearch()
+	ui.setupStatusBar()
 
 	ui.mountChat(false)
 	ui.App.SetRoot(ui.Pages, true).EnableMouse(true).EnablePaste(true)
@@ -138,18 +142,76 @@ func (ui *TViewUI) globalKeys(event *tcell.EventKey) *tcell.EventKey {
 		ui.toggleSearch()
 		return nil
 	case tcell.KeyEsc:
-		if page, _ := ui.Pages.GetFrontPage(); page == "copy" {
-			ui.hideCopyMode()
-			return nil
-		}
-		if ui.isStreaming && ui.streamCancel != nil {
-			ui.streamCancel()
-			return nil
-		}
-		ui.confirmQuit()
-		return nil
+		return ui.handleEsc()
 	}
 	return event
+}
+
+func (ui *TViewUI) handleEsc() *tcell.EventKey {
+	page, _ := ui.Pages.GetFrontPage()
+	switch escActionFor(page, ui.searchActive, ui.isStreaming) {
+	case escCancelStream:
+		ui.stopStreaming()
+	case escCloseSearch:
+		ui.clearSearch()
+	case escBackChat:
+		ui.dismissToChat(page)
+	case escBackPrompts:
+		ui.dismissPromptOverlay(page)
+	case escCloseOverlay:
+		if ui.Pages.HasPage(page) {
+			ui.Pages.RemovePage(page)
+		}
+		// confirm-quit / export-dialog return to chat input when chat is front.
+		// confirm-delete stays on history (focusChatIfFront is a no-op).
+		ui.focusChatIfFront()
+	case escNone:
+		// Idle chat: consume Esc so it cannot quit.
+		// HITL confirm-tool: consume Esc so the modal cannot auto-deny.
+	}
+	return nil
+}
+
+func (ui *TViewUI) dismissToChat(page string) {
+	switch page {
+	case "copy":
+		ui.hideCopyMode()
+		return
+	case "system_prompts_mgr":
+		if ui.Pages.HasPage("system_prompts_mgr") {
+			ui.Pages.RemovePage("system_prompts_mgr")
+		}
+	}
+	ui.focusChatInput()
+}
+
+func (ui *TViewUI) dismissPromptOverlay(page string) {
+	switch page {
+	case "prompt_editor":
+		if ui.Pages.HasPage("prompt_editor") {
+			ui.Pages.RemovePage("prompt_editor")
+		}
+		ui.showSystemPrompts()
+	case "confirm_delete_prompt":
+		if ui.Pages.HasPage("confirm_delete_prompt") {
+			ui.Pages.RemovePage("confirm_delete_prompt")
+		}
+		if ui.Pages.HasPage("system_prompts_mgr") {
+			ui.Pages.SwitchToPage("system_prompts_mgr")
+		}
+	}
+}
+
+func (ui *TViewUI) focusChatInput() {
+	ui.Pages.SwitchToPage("chat")
+	ui.App.SetFocus(ui.InputField)
+}
+
+func (ui *TViewUI) focusChatIfFront() {
+	front, _ := ui.Pages.GetFrontPage()
+	if front == "chat" || front == "" {
+		ui.focusChatInput()
+	}
 }
 
 func (ui *TViewUI) startupNotices() {

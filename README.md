@@ -12,7 +12,7 @@
 
 - 🔌 **多提供商**：通过 Eino 官方 `eino-ext` ChatModel 接入 OpenAI 兼容接口、Ark（火山引擎）、Ollama、Claude（Anthropic）、Gemini（Google）、Qwen（DashScope）、DeepSeek。
 - 🧠 **Eino Agent（P0 通用 Agent）**：`ChatModelAgent` + `Runner` 流式执行；默认编程助手 Instruction、可配置 `max_iterations`、`ExitTool`、工作区沙箱（`workspace_root`）、可关闭 `write_file` / `run_command`；工具含 time/cwd/list/read/write/http_get/run_command/`glob_files`/`search_text`/`make_directory`。详见 [`docs/requirements.md`](docs/requirements.md) 与 [`docs/prd.md`](docs/prd.md)。
-- 🌊 **流式交互**：助手文本增量渲染；出现 tool-call / 多步状态时在聊天区提示。`Esc` 或底部 **Stop** 取消进行中的 run。
+- 🌊 **流式交互**：助手文本增量渲染；出现 tool-call / 多步状态时在聊天区提示。流式过程中按 `Esc` 取消进行中的 run。
 - 🛡️ **危险工具确认**：`write_file` / `run_command` 执行前弹出 Allow/Deny；拒绝后工具返回错误，Agent 不会改文件或跑命令。
 - 💬 **多行输入**：输入框支持多行编辑，`Shift+Enter` 换行，`Enter` 发送。
 - 📋 **安全粘贴**：支持括号粘贴（bracketed paste），多行粘贴不会被拆成多次发送。
@@ -23,7 +23,7 @@
   - **安全删除**：支持删除历史会话，内置二次确认防止误操作。
   - **一键导出**：支持将对话导出为标准的 Markdown 格式。
 - 🖥️ **现代 TUI**：
-  - **鼠标支持**：底部操作栏支持鼠标点击触发。
+  - **状态栏**：底部一行显示 provider/model 与快捷键；`Ctrl+B` 打开侧边菜单。
   - **优雅渲染**：集成 Markdown 语法高亮，代码块阅读更舒适。
 - ⌨️ **极客操作**：丰富的快捷键支持，完全脱离鼠标亦可高效运行。
 - 🗂️ **文件注入**：通过 `/read` 指令快速读取本地文件内容发送给 AI。
@@ -134,14 +134,15 @@ TUI (tview)  ──messages (go-openai types in SQLite)──►  api.Client
 | `Ctrl + S` | **设置中心** (Settings：provider / model / credentials) |
 | `Ctrl + E` | **导出对话** (Export Markdown) |
 | `Ctrl + Shift + E` | **导出对话 (带文件名对话框)** |
-| `Ctrl + B` | **侧边栏开关** |
+| `Ctrl + B` | **侧边菜单开关**（默认隐藏） |
 | `Ctrl + Y` | **进入 Copy Mode** |
 | `Ctrl + C` | **主界面弹出退出确认** (Copy Mode 中为复制) |
-| `Esc` | **取消流式 Agent run**；无流时退出确认（Copy Mode 中返回） |
+| `Esc` | **取消流式 Agent run**；关闭 History / Settings / Copy / Search 等页面；空闲聊天无操作（不退出） |
 | `Enter` | **发送消息** (输入框内) |
 | `Shift + Enter` | **输入换行** |
+| `Up` / `Down` | **首行 Up 回溯发送历史**；已在历史中时 Down 前进；否则在多行草稿中移动光标 |
 
-底部操作栏提供 **Stop** 按钮，与 `Esc` 一样取消进行中的流。
+退出只通过 `Ctrl+C` 确认框。流式过程中用 `Esc` 停止，没有底部 Stop 按钮。
 
 ---
 

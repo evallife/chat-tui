@@ -5,8 +5,9 @@
 | Task | Location |
 |------|----------|
 | App shell, global keys, constructor | `ui.go` |
+| Esc routing, input height, status text | `keys.go` |
 | Theme definitions (5 themes) | `theme.go` `themes` map |
-| Sidebar, footer, quit, new chat | `layout.go` |
+| Sidebar, status bar, quit, new chat | `layout.go` |
 | Chat view, input, stream, refresh | `chat.go` |
 | Slash commands and export | `commands.go` |
 | In-chat search | `search.go` |
